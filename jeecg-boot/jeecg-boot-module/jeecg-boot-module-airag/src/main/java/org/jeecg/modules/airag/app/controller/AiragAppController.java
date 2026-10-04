@@ -98,10 +98,10 @@ public class AiragAppController extends JeecgController<AiragApp, IAiragAppServi
         AssertUtils.assertNotEmpty("请选择应用类型", airagApp.getType());
         //update-begin---author:zhangdaihao ---date:20260415  for：[issues/9462]AI应用edit接口跨租户数据写入漏洞------------
         //SaaS多租户隔离：禁止跨租户写入，防止通过请求体伪造tenantId污染其他租户数据
+        AiragApp dbApp = oConvertUtils.isNotEmpty(airagApp.getId()) ? airagAppService.getById(airagApp.getId()) : null;
         if (MybatisPlusSaasConfig.OPEN_SYSTEM_TENANT_CONTROL) {
             String currentTenantId = TokenUtils.getTenantIdByRequest(request);
             if (airagApp.getId() != null && !airagApp.getId().isEmpty()) {
-                AiragApp dbApp = airagAppService.getById(airagApp.getId());
                 if (dbApp == null || !dbApp.getTenantId().equals(currentTenantId)) {
                     return Result.error("保存AI应用失败，不能修改其他租户的AI应用！");
                 }
@@ -110,7 +110,15 @@ public class AiragAppController extends JeecgController<AiragApp, IAiragAppServi
             airagApp.setTenantId(currentTenantId);
         }
         //update-end---author:zhangdaihao ---date:20260415  for：[issues/9462]AI应用edit接口跨租户数据写入漏洞------------
-        airagApp.setStatus(AiAppConsts.STATUS_ENABLE);
+        // 已发布应用保存后保持发布状态和分享令牌，允许改模型/提示词而不下线
+        if (dbApp != null && AiAppConsts.STATUS_RELEASE.equals(dbApp.getStatus())) {
+            airagApp.setStatus(AiAppConsts.STATUS_RELEASE);
+            if (oConvertUtils.isEmpty(airagApp.getShareToken())) {
+                airagApp.setShareToken(dbApp.getShareToken());
+            }
+        } else {
+            airagApp.setStatus(AiAppConsts.STATUS_ENABLE);
+        }
         airagAppService.saveOrUpdate(airagApp);
         return Result.OK("保存完成!", airagApp.getId());
     }

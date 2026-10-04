@@ -34,6 +34,7 @@
         <apache-tika.version>3.3.1</apache-tika.version>
         <langchain4j-community-bom.version>1.17.2-beta27</langchain4j-community-bom.version>
         <liteflow.version>2.15.0</liteflow.version>
+        <langgraph4j.version>1.8.20</langgraph4j.version>
     </properties>
 
     <dependencyManagement>
@@ -213,6 +214,12 @@
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
             <version>1.22.2</version>
+        </dependency>
+        <!-- 山洪报告编排：只引 core，LLM 仍走现有 AIChatHandler -->
+        <dependency>
+            <groupId>org.bsc.langgraph4j</groupId>
+            <artifactId>langgraph4j-core</artifactId>
+            <version>${langgraph4j.version}</version>
         </dependency>
     </dependencies>
 

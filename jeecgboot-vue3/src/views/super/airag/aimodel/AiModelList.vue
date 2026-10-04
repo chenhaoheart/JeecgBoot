@@ -47,6 +47,9 @@
               <li class="flex mr-14" style="align-items: center;">
                 <span class="label" style="flex-shrink: 0;">模型类型</span>
                 <span class="described" style="flex: 1; min-width: 0;">{{ item.modelType_dictText }}</span>
+                <a-tooltip v-if="item.izDefault" title="默认模型：各处未显式选择模型时使用（同类型仅一个，可在「更多」里换设）。">
+                  <span class="is-default">默认</span>
+                </a-tooltip>
                 <a-tooltip v-if="!item.activateFlag" title="未激活模型暂无法被系统其他功能调用，激活后可正常使用。">
                   <span class="no-activate">未激活</span>
                 </a-tooltip>
@@ -77,6 +80,9 @@
                   </a-menu-item>-->
                   <a-menu-item key="copy" @click.prevent.stop="handleCopyClick(item)">
                     <Icon icon="ant-design:copy-outlined" size="16"></Icon> 复制
+                  </a-menu-item>
+                  <a-menu-item v-if="item.activateFlag && !item.izDefault" key="setDefault" @click.prevent.stop="handleSetDefaultClick(item)">
+                    <Icon icon="ant-design:check-circle-outlined" size="16"></Icon> 设为默认
                   </a-menu-item>
                   <a-menu-item v-if="item.activateFlag" key="deactivate" @click.prevent.stop="handleDeactivateClick(item)">
                     <Icon icon="ant-design:stop-outlined" size="16"></Icon> 取消激活
@@ -114,7 +120,7 @@
   import { reactive, ref } from 'vue';
   import AiModelModal from './components/AiModelModal.vue';
   import { useModal } from '@/components/Modal';
-  import { copyModel, deleteModel, list, editModel } from './model.api';
+  import { copyModel, deleteModel, list, editModel, setDefaultModel } from './model.api';
   import { imageList } from './model.data';
   import { Pagination } from 'ant-design-vue';
   import JInput from '@/components/Form/src/jeecg/components/JInput.vue';
@@ -256,6 +262,15 @@
       }
 
       /**
+       * 设为默认模型（同类型互斥，原默认自动取消）
+       * @param item
+       */
+      async function handleSetDefaultClick(item) {
+        await setDefaultModel(item.id);
+        reload();
+      }
+
+      /**
        * 查询
        */
       function searchQuery() {
@@ -295,6 +310,7 @@
         handleDeleteClick,
         handleCopyClick,
         handleDeactivateClick,
+        handleSetDefaultClick,
         searchQuery,
         searchReset,
         queryParam,
@@ -367,6 +383,17 @@
     font-size: 10px;
     color: #ff4d4f;
     border: 1px solid #ff4d4f;
+    border-radius: 10px;
+    padding: 0 6px;
+    height: 14px;
+    line-height: 12px;
+    margin-left: 6px;
+    align-self: center;
+  }
+  .is-default{
+    font-size: 10px;
+    color: #389e0d;
+    border: 1px solid #389e0d;
     border-radius: 10px;
     padding: 0 6px;
     height: 14px;

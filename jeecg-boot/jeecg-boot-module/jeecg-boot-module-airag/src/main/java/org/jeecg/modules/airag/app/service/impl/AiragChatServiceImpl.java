@@ -10,6 +10,7 @@ import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.image.Image;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.output.FinishReason;
+import dev.langchain4j.model.output.TokenUsage;
 import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.tool.ToolExecutor;
 import jakarta.servlet.http.HttpServletRequest;
@@ -67,6 +68,7 @@ import org.jeecg.modules.airag.llm.mapper.AiragModelMapper;
 import org.jeecg.modules.airag.llm.service.IAiragFlowPluginService;
 import org.jeecg.modules.airag.llm.service.IAiragKnowledgeDocService;
 import org.jeecg.modules.airag.llm.service.IAiragKnowledgeService;
+import org.jeecg.modules.airag.shreport.service.ShReportKnowledgeService;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.BoundValueOperations;
@@ -141,6 +143,14 @@ public class AiragChatServiceImpl implements IAiragChatService {
 
     @Autowired
     AiRagConfigBean aiRagConfigBean;
+
+    @Autowired(required = false)
+    private ShReportKnowledgeService shReportKnowledgeService;
+
+    //update-begin---author:zcode---date:20261004---for:【图像识别】会话双写PG持久化（Redis丢失后可恢复）-----------
+    @Autowired
+    private ImgRecChatSessionPgStore imgRecChatSessionPgStore;
+    //update-end---author:zcode---date:20261004---for:【图像识别】会话双写PG持久化（Redis丢失后可恢复）-----------
 
     /**
      * 重新接收消息
@@ -349,7 +359,14 @@ public class AiragChatServiceImpl implements IAiragChatService {
         }
         ChatConversation chatConversation = (ChatConversation) redisTemplate.boundValueOps(key).get();
         if (oConvertUtils.isObjectEmpty(chatConversation)) {
-            return Result.ok(Collections.emptyList());
+            //update-begin---author:zcode---date:20261004---for:【图像识别】Redis丢失时从PG回灌会话-----------
+            if (ImgRecChatSessionPgStore.SESSION_TYPE_IMGREC.equals(sessionType)) {
+                chatConversation = restoreImgrecFromPg(getUsername(null), conversationId, key);
+            }
+            if (oConvertUtils.isObjectEmpty(chatConversation)) {
+            //update-end---author:zcode---date:20261004---for:【图像识别】Redis丢失时从PG回灌会话-----------
+                return Result.ok(Collections.emptyList());
+            }
         }
         //update-begin---author:chenrui ---date:20251106  for：[issues/8545]新建AI应用的时候只能选择没有自定义参数的AI流程------------
         // 返回消息列表和会话设置信息
@@ -687,10 +704,15 @@ public class AiragChatServiceImpl implements IAiragChatService {
 
     @Override
     public Result<?> deleteConversation(String conversationId, String sessionType) {
-        AssertUtils.assertNotEmpty("请选择要删除的会话", conversationId);
+        AssertUtils.assertNotEmpty("请选择要删除会话", conversationId);
         //update-begin---author:wangshuai---date:2025-12-10---for:【QQYUN-14127】【AI】AI应用门户---
         String key = getConversationCacheKey(conversationId, null, sessionType);
         //update-end---author:wangshuai---date:2025-12-10---for:【QQYUN-14127】【AI】AI应用门户---
+        //update-begin---author:zcode---date:20261004---for:【图像识别】同步删除PG持久化会话-----------
+        if (ImgRecChatSessionPgStore.SESSION_TYPE_IMGREC.equals(sessionType)) {
+            imgRecChatSessionPgStore.delete(getUsername(null), conversationId);
+        }
+        //update-end---author:zcode---date:20261004---for:【图像识别】同步删除PG持久化会话-----------
         if (oConvertUtils.isNotEmpty(key)) {
             Boolean delete = redisTemplate.delete(key);
             if (delete) {
@@ -860,6 +882,19 @@ public class AiragChatServiceImpl implements IAiragChatService {
         if (temp) {
             chatRedisCacheOp.expire(3, TimeUnit.HOURS);
         }
+        //update-begin---author:zcode---date:20261004---for:【图像识别】会话异步双写PG持久化（base64图片转存文件，不落PG）-----------
+        if (ImgRecChatSessionPgStore.SESSION_TYPE_IMGREC.equals(sessionType) && !temp) {
+            String username = getUsername(httpRequest);
+            if (oConvertUtils.isNotEmpty(username)) {
+                HttpServletRequest req = httpRequest != null ? httpRequest : SpringContextUtils.getHttpServletRequest();
+                String baseUrl = req == null ? null
+                        : req.getScheme() + "://" + req.getServerName() + ":" + req.getServerPort() + req.getContextPath();
+                imgRecChatSessionPgStore.persistAsync(username, chatConversation.getId(), chatConversation.getTitle(),
+                        chatConversation.getApp() == null ? null : chatConversation.getApp().getId(),
+                        JSON.toJSONString(chatConversation), baseUrl);
+            }
+        }
+        //update-end---author:zcode---date:20261004---for:【图像识别】会话异步双写PG持久化（base64图片转存文件，不落PG）-----------
     }
 
     /**
@@ -952,6 +987,29 @@ public class AiragChatServiceImpl implements IAiragChatService {
      */
     private void appendMessage(List<ChatMessage> messages, ChatMessage message, ChatConversation chatConversation, String topicId) {
         appendMessage(messages, message, chatConversation, topicId, null, null);
+    }
+
+    /** 提取消息纯文本（用于token用量按字符估算）；多段内容（文本+图片）时 singleText 会抛异常，需遍历文本段 */
+    private static String chatMessageText(ChatMessage m) {
+        try {
+            if (m instanceof SystemMessage sm) {
+                return sm.text();
+            }
+            if (m instanceof UserMessage um) {
+                StringBuilder sb = new StringBuilder();
+                for (Content c : um.contents()) {
+                    if (c instanceof TextContent tc) {
+                        sb.append(tc.text());
+                    }
+                }
+                return sb.toString();
+            }
+            if (m instanceof AiMessage am) {
+                return am.text();
+            }
+        } catch (Exception ignore) {
+        }
+        return String.valueOf(m);
     }
 
     private void appendMessage(List<ChatMessage> messages, ChatMessage message, ChatConversation chatConversation, String topicId, List<String> files, String saveContent) {
@@ -1098,7 +1156,7 @@ public class AiragChatServiceImpl implements IAiragChatService {
                     aiChatParams.setReturnThinking(sendParams.getEnableThink());
                 }
                 //update-begin---author:wangshuai---date:2025-12-10---for:【QQYUN-14127】【AI】AI应用门户---
-                sendWithDefault(requestId, chatConversation, topicId, null, messages, aiChatParams, sendParams.getSessionType());
+                sendWithDefault(requestId, chatConversation, topicId, resolvePageModelId(sendParams), messages, aiChatParams, sendParams.getSessionType());
                 //update-end---author:wangshuai---date:2025-12-10---for:【QQYUN-14127】【AI】AI应用门户---
             }
             // 发送就绪消息
@@ -1300,6 +1358,11 @@ public class AiragChatServiceImpl implements IAiragChatService {
     private void sendWithAppChat(String requestId, List<ChatMessage> messages, ChatConversation chatConversation, String topicId, ChatSendParams sendParams, String flowId, String memoryId) {
         AiragApp aiApp = chatConversation.getApp();
         String modelId = aiApp.getModelId();
+        // chatSimple 应用与助手页一致：登录用户可在聊天框覆盖应用配置模型
+        String pageModelId = resolvePageModelId(sendParams);
+        if (oConvertUtils.isNotEmpty(pageModelId)) {
+            modelId = pageModelId;
+        }
         AssertUtils.assertNotEmpty("请先选择模型", modelId);
         // AI应用提示词
         String prompt = aiApp.getPrompt();
@@ -1319,8 +1382,15 @@ public class AiragChatServiceImpl implements IAiragChatService {
         if (oConvertUtils.isNotEmpty(prompt)) {
             appendMessage(messages, new SystemMessage(prompt), chatConversation, topicId);
         }
+        boolean surveyKbHandled = injectSurveyKbContext(aiApp, messages, chatConversation, topicId);
 
         AIChatParams aiChatParams = new AIChatParams();
+        if (surveyKbHandled) {
+            // 已按 0.45+关键词/未命中引导注入，避免平台默认 0.75 再检索一次导致空命中覆盖引导
+            aiChatParams.setKnowIds(new ArrayList<>());
+            aiChatParams.setTopNumber(4);
+            aiChatParams.setSimilarity(0.45);
+        }
         // AI应用自定义的模型参数
         String metadataStr = aiApp.getMetadata();
         if (oConvertUtils.isNotEmpty(metadataStr)) {
@@ -1440,6 +1510,72 @@ public class AiragChatServiceImpl implements IAiragChatService {
         sendWithDefault(requestId, chatConversation, topicId, modelId, messages, aiChatParams, sendParams.getSessionType(), generatedImageGenerator);
         //update-end---author:scott ---date:20260810  for：AI应用支持智能识别和图文混合生成-----------
         //update-end---author:wangshuai---date:2025-12-10---for:【QQYUN-14127】【AI】AI应用门户---
+    }
+
+    /**
+     * 山洪调查成果问答：向量 0.45 + 点名流域时关键词兜底；仍无命中则注入可查流域和示例问法。
+     * @return true 表示已接管检索，调用方应跳过平台默认 0.75 RAG
+     */
+    private boolean injectSurveyKbContext(AiragApp aiApp, List<ChatMessage> messages, ChatConversation chatConversation, String topicId) {
+        if (shReportKnowledgeService == null || aiApp == null) {
+            return false;
+        }
+        if (!shReportKnowledgeService.boundToApp(aiApp.getId(), aiApp.getName(), aiApp.getKnowledgeIds())) {
+            return false;
+        }
+        try {
+            String augment = shReportKnowledgeService.chatAugment(lastUserText(messages), recentUserTexts(messages));
+            if (oConvertUtils.isNotEmpty(augment)) {
+                appendMessage(messages, new SystemMessage(augment), chatConversation, topicId);
+            }
+        } catch (Exception e) {
+            log.warn("山洪调查成果检索增强失败，回退未命中引导：{}", e.getMessage());
+            appendMessage(messages, new SystemMessage(ShReportKnowledgeService.buildMissHint(List.of(), true)), chatConversation, topicId);
+        }
+        return true;
+    }
+
+    private static String lastUserText(List<ChatMessage> messages) {
+        if (messages == null) {
+            return "";
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage msg = messages.get(i);
+            if (msg instanceof UserMessage userMessage) {
+                return userMessageText(userMessage);
+            }
+        }
+        return "";
+    }
+
+    private static List<String> recentUserTexts(List<ChatMessage> messages) {
+        List<String> out = new ArrayList<>();
+        if (messages == null) {
+            return out;
+        }
+        for (ChatMessage msg : messages) {
+            if (msg instanceof UserMessage userMessage) {
+                String text = userMessageText(userMessage);
+                if (!text.isBlank()) {
+                    out.add(text);
+                }
+            }
+        }
+        int from = Math.max(0, out.size() - 3);
+        return new ArrayList<>(out.subList(from, out.size()));
+    }
+
+    private static String userMessageText(UserMessage userMessage) {
+        if (userMessage == null || userMessage.contents() == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Content content : userMessage.contents()) {
+            if (content instanceof TextContent textContent) {
+                sb.append(textContent.text());
+            }
+        }
+        return sb.toString().trim();
     }
 
     /**
@@ -1564,10 +1700,15 @@ public class AiragChatServiceImpl implements IAiragChatService {
             }
         }
         //update-end---author:wangshuai ---date:2026-04-15  for：Brave Search配置迁移到AiRagConfigBean，仅在联网搜索开启时注入工具-----------
-        if(CollectionUtils.isEmpty(aiChatParams.getKnowIds())){
+        if (aiChatParams.getKnowIds() == null) {
             aiChatParams.setKnowIds(chatConversation.getApp().getKnowIds());
-        } else {
-            aiChatParams.getKnowIds().addAll(chatConversation.getApp().getKnowIds());
+        } else if (!aiChatParams.getKnowIds().isEmpty()) {
+            List<String> merged = new ArrayList<>(aiChatParams.getKnowIds());
+            List<String> appKnowIds = chatConversation.getApp().getKnowIds();
+            if (appKnowIds != null) {
+                merged.addAll(appKnowIds);
+            }
+            aiChatParams.setKnowIds(merged);
         }
         aiChatParams.setMaxMsgNumber(oConvertUtils.getInt(chatConversation.getApp().getMsgNum(), 5));
         aiChatParams.setCurrentHttpRequest(httpRequest);
@@ -1745,6 +1886,27 @@ public class AiragChatServiceImpl implements IAiragChatService {
             if (FinishReason.STOP.equals(finishReason) || null == finishReason) {
                 // 正常结束
                 EventData eventData = new EventData(requestId, null, EventData.EVENT_MESSAGE_END, chatConversation.getId(), topicId);
+                //update-begin---author:scott ---date:20260919  for：AI助手页前端展示token消耗，MESSAGE_END携带本轮用量-----------
+                // 本轮 token 用量：模型返回真实用量优先，未返回时按字符数估算（约2字符/1token）
+                TokenUsage tokenUsage = responseMessage.tokenUsage();
+                JSONObject usage = new JSONObject();
+                if (tokenUsage != null && tokenUsage.totalTokenCount() != null && tokenUsage.totalTokenCount() > 0) {
+                    usage.put("inputTokens", tokenUsage.inputTokenCount() == null ? 0 : tokenUsage.inputTokenCount());
+                    usage.put("outputTokens", tokenUsage.outputTokenCount() == null ? 0 : tokenUsage.outputTokenCount());
+                    usage.put("totalTokens", tokenUsage.totalTokenCount());
+                } else {
+                    int inChars = 0;
+                    for (ChatMessage m : messages) {
+                        inChars += chatMessageText(m).length();
+                    }
+                    int outChars = respText == null ? 0 : respText.length();
+                    usage.put("inputTokens", Math.round(inChars / 2.0));
+                    usage.put("outputTokens", Math.round(outChars / 2.0));
+                    usage.put("totalTokens", Math.round((inChars + outChars) / 2.0));
+                    usage.put("estimated", true);
+                }
+                eventData.setData(usage);
+                //update-end---author:scott ---date:20260919  for：AI助手页前端展示token消耗，MESSAGE_END携带本轮用量-----------
                 //update-begin---author:scott ---date:20260810  for：AI应用支持智能识别和图文混合生成-----------
                 if (deferTextResponse) {
                     String sanitizedText = imageGenerationContentAssembler.removeGeneratedImageMarkdown(aiMessage == null ? null : aiMessage.text());
@@ -2088,6 +2250,19 @@ public class AiragChatServiceImpl implements IAiragChatService {
      * @author chenrui
      * @date 2025/3/27 15:05
      */
+    /**
+     * 登录用户页面选择的模型。匿名忽略，防止未登录分享页刷模型额度。
+     */
+    private String resolvePageModelId(ChatSendParams sendParams) {
+        if (sendParams == null || oConvertUtils.isEmpty(sendParams.getModelId())) {
+            return null;
+        }
+        if (oConvertUtils.isEmpty(getUsername(SpringContextUtils.getHttpServletRequest()))) {
+            return null;
+        }
+        return sendParams.getModelId();
+    }
+
     private String getUsername(HttpServletRequest httpRequest) {
         try {
             TokenUtils.getTokenByRequest();
@@ -2135,6 +2310,13 @@ public class AiragChatServiceImpl implements IAiragChatService {
         List<String> keys = redisUtil.scan(key);
         // 如果键集合为空，返回空列表
         if (keys.isEmpty()) {
+            //update-begin---author:zcode---date:20261004---for:【图像识别】Redis丢失时从PG兜底会话列表-----------
+            if (ImgRecChatSessionPgStore.SESSION_TYPE_IMGREC.equals(sessionType)) {
+                List<ChatConversation> pgConversations = new ArrayList<>();
+                mergeImgrecFromPg(getUsername(null), pgConversations);
+                return Result.ok(pgConversations);
+            }
+            //update-end---author:zcode---date:20261004---for:【图像识别】Redis丢失时从PG兜底会话列表-----------
             return Result.ok(Collections.emptyList());
         }
 
@@ -2153,6 +2335,12 @@ public class AiragChatServiceImpl implements IAiragChatService {
                 conversations.add(conversation);
             }
         }
+
+        //update-begin---author:zcode---date:20261004---for:【图像识别】Redis丢失时从PG兜底会话列表-----------
+        if (ImgRecChatSessionPgStore.SESSION_TYPE_IMGREC.equals(sessionType)) {
+            mergeImgrecFromPg(getUsername(null), conversations);
+        }
+        //update-end---author:zcode---date:20261004---for:【图像识别】Redis丢失时从PG兜底会话列表-----------
 
         // 对会话列表按创建时间降序排序
         conversations.sort((o1, o2) -> {
@@ -2173,6 +2361,79 @@ public class AiragChatServiceImpl implements IAiragChatService {
         // 返回结果
         return Result.ok(conversations);
     }
+
+    //================================================= begin 【图像识别】会话PG持久化（zcode, 20261004） ========================================
+
+    /**
+     * 图像识别会话：Redis 丢失（重启/被清）时从 PG 回灌，并重新写入 Redis
+     *
+     * @param username       当前登录用户名
+     * @param conversationId 会话id
+     * @param redisKey       会话在 Redis 中的完整 key
+     * @return 回灌的会话；PG 无记录或异常时返回 null（退化为 Redis 行为）
+     */
+    private ChatConversation restoreImgrecFromPg(String username, String conversationId, String redisKey) {
+        try {
+            if (oConvertUtils.isEmpty(username)) {
+                return null;
+            }
+            String json = imgRecChatSessionPgStore.loadConversation(username, conversationId);
+            if (oConvertUtils.isEmpty(json)) {
+                return null;
+            }
+            ChatConversation chatConversation = JSON.parseObject(json, ChatConversation.class);
+            if (chatConversation == null || oConvertUtils.isEmpty(chatConversation.getId())) {
+                return null;
+            }
+            chatConversation.setSessionType(ImgRecChatSessionPgStore.SESSION_TYPE_IMGREC);
+            redisTemplate.boundValueOps(redisKey).set(chatConversation);
+            log.info("[imgrec]会话已从PG回灌Redis: conversationId={}, 消息数={}",
+                    conversationId, chatConversation.getMessages() == null ? 0 : chatConversation.getMessages().size());
+            return chatConversation;
+        } catch (Exception e) {
+            log.error("[imgrec]从PG回灌会话失败: conversationId={}", conversationId, e);
+            return null;
+        }
+    }
+
+    /**
+     * 图像识别会话列表兜底：Redis 中不存在的会话用 PG 持久化记录补齐
+     *
+     * @param username      当前登录用户名
+     * @param conversations 已收集的会话列表（原地追加）
+     */
+    private void mergeImgrecFromPg(String username, List<ChatConversation> conversations) {
+        try {
+            if (oConvertUtils.isEmpty(username)) {
+                return;
+            }
+            Set<String> existingIds = conversations.stream()
+                    .map(ChatConversation::getId).collect(Collectors.toSet());
+            for (Map<String, Object> row : imgRecChatSessionPgStore.listSummaries(username)) {
+                Object conversationIdObj = row.get("conversation_id");
+                if (conversationIdObj == null) {
+                    continue;
+                }
+                String conversationId = String.valueOf(conversationIdObj);
+                if (existingIds.contains(conversationId)) {
+                    continue;
+                }
+                ChatConversation conversation = new ChatConversation();
+                conversation.setId(conversationId);
+                conversation.setTitle(row.get("title") == null ? "" : String.valueOf(row.get("title")));
+                conversation.setSessionType(ImgRecChatSessionPgStore.SESSION_TYPE_IMGREC);
+                Object createMs = row.get("create_ms");
+                if (createMs instanceof Number) {
+                    conversation.setCreateTime(new Date(((Number) createMs).longValue()));
+                }
+                conversations.add(conversation);
+            }
+        } catch (Exception e) {
+            log.error("[imgrec]从PG兜底会话列表失败", e);
+        }
+    }
+
+    //================================================= end 【图像识别】会话PG持久化（zcode, 20261004） ========================================
 
     //================================================= begin 【QQYUN-14269】【AI】支持变量 ========================================
     /**

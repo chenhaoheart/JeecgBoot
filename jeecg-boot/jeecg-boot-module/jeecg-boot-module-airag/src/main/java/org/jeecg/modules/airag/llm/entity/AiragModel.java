@@ -127,4 +127,11 @@ public class AiragModel implements Serializable {
     @Excel(name = "是否激活", width = 15)
     @Schema(description = "是否激活")
     private Integer activateFlag;
+
+    /**
+     * 是否默认模型(0=否,1=是；同一 model_type 下最多一个，前端「AI模型」页设置，未设置时回退 jeecg.ai-chat 平台底层配置)
+     */
+    @Excel(name = "是否默认", width = 15)
+    @Schema(description = "是否默认模型")
+    private Integer izDefault;
 }

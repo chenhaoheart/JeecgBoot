@@ -9,6 +9,7 @@ enum Api {
   queryById = '/airag/airagModel/queryById',
   edit = '/airag/airagModel/edit',
   copy = '/airag/airagModel/copy',
+  setDefault = '/airag/airagModel/setDefault',
 }
 
 /**
@@ -54,6 +55,15 @@ export const editModel = (params) => {
  */
 export const copyModel = (id) => {
   return defHttp.post({ url: `${Api.copy}/${id}` });
+};
+
+/**
+ * 设为默认模型：同一模型类型互斥，未显式选模型的场景（AI应用/助手/报告生成等）将使用它
+ *
+ * @param id 模型ID
+ */
+export const setDefaultModel = (id) => {
+  return defHttp.post({ url: Api.setDefault, params: { id } }, { joinParamsToUrl: true });
 };
 
 /**

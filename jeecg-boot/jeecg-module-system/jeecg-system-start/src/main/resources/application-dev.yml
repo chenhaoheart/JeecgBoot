@@ -146,8 +146,15 @@ spring:
         master:
           url: jdbc:mysql://127.0.0.1:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
           username: root
-          password: root
+          password: 123456
           driver-class-name: com.mysql.cj.jdbc.Driver
+        # 一张图调查成果 PostgreSQL（JSONB 存 GeoJSON，无需 PostGIS；导入见 sh_report_import/）。
+        # 报告助手数据包/数据问答/流域清单等通过 @DS("shreport") 路由（见 ShReportPgQueryService）。
+        shreport:
+          url: jdbc:postgresql://127.0.0.1:5432/shreport_map
+          username: postgres
+          password: '123456'
+          driver-class-name: org.postgresql.Driver
 #        # shardingjdbc数据源
 #        sharding-db:
 #          driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
@@ -158,7 +165,7 @@ spring:
       database: 0
       host: 127.0.0.1
       port: 6379
-      password:
+      password: 123456
 #mybatis plus 设置
 mybatis-plus:
   mapper-locations: classpath*:org/jeecg/**/xml/*Mapper.xml
@@ -181,13 +188,14 @@ minidao:
 jeecg:
   # 自定义资源请求前缀（js、css等解决nginx转发问题）
   custom-resource-prefix-path:
-  # AI集成
+  # AI集成（平台兜底：流程调试「生成测试数据」走 jeecg.chatgpt.AiChatService，不读 airag_model）
   ai-chat:
     enabled: true
-    model: deepseek-v4-pro
+    provider: OPENAI
+    model: ark-code-latest
     apiKey: ??
-    apiHost: https://api.deepseek.com/v1
-    timeout: 60
+    apiHost: https://ark.cn-beijing.volces.com/api/plan/v3
+    timeout: 120
     skills-dir:
     skills-shell-dir:
     # AI聊天助手访问限流配置
@@ -248,7 +256,7 @@ jeecg:
     allow-sensitive-nodes: sql,stdio,code
     embed-store:
       host: 127.0.0.1
-      port: 5432
+      port: 5433
       database: vector_db
       user: postgres
       password: postgres
@@ -290,7 +298,7 @@ jeecg:
     #webapp文件路径
     webapp: /opt/webapp
   shiro:
-    excludeUrls: /test/jeecgDemo/demo3,/test/jeecgDemo/redisDemo/**,/bigscreen/category/**,/bigscreen/visual/**,/bigscreen/map/**,/jmreport/bigscreen2/**
+    excludeUrls: /test/jeecgDemo/demo3,/test/jeecgDemo/redisDemo/**,/bigscreen/category/**,/bigscreen/visual/**,/bigscreen/map/**,/jmreport/bigscreen2/**,/sh/report/map/file/preview
   # 短信发送方式 aliyun阿里云短信 tencent腾讯云短信
   smsSendType: aliyun
   #阿里云oss存储和大鱼短信秘钥配置
@@ -336,16 +344,15 @@ jeecg:
     # 签名密钥串(前后端要一致，正式发布请自行修改)
     signatureSecret: dd05f1c54d63749eda95f9fa6d49v442a
     ai:
-      # OpenAI 兼容 base 地址（必填）
-      base-url: https://api.deepseek.com
+      # OpenAI 兼容 base 地址（必填）；与 airag 默认模型「火山方舟-agent」一致
+      base-url: https://ark.cn-beijing.volces.com/api/plan/v3
       # API Key（必填，留空则 AI 不可用）
-      api-key: 
+      api-key: ??
       # 模型名
-      model: deepseek-v4-pro
-      #确定性输出，默认temperature=0
-      temperature: 0
-      # 单次生成最大 token 数(传给大模型的 max_tokens)，DeepSeek 合法范围[1,393216]
-      max-tokens: 393216
+      model: ark-code-latest
+      temperature: 0.6
+      # 单次生成最大 token 数(传给大模型的 max_tokens)
+      max-tokens: 4096
       # AI自动建表功（安全警告: 此功能会直接操作数据库DDL/DML，生产环境请勿启用）
       autoTableEnabled: true
     # 平台上线安全配置
@@ -437,3 +444,58 @@ justauth:
     type: default
     prefix: 'demo::'
     timeout: 1h
+
+# 明确指定 liteflow 读 MySQL 编排表，避免误选一张图 PostgreSQL 数据源
+liteflow:
+  rule-source-ext-data-map:
+    url: jdbc:mysql://127.0.0.1:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+    driverClassName: com.mysql.cj.jdbc.Driver
+
+# 山洪报告助手：默认使用已激活的火山方舟-agent；前端另选模型时仍可覆盖。
+shreport:
+  agent:
+    model-id: '2099900548148649986'
+  knowledge:
+    enabled: true
+    id: '2099990000000000101'   # 山洪调查成果（import_sh_survey_kb.py）
+    top-number: 3
+    similarity: 0.45
+  graph:
+    max-retry: 2
+    # 质检/跨章不达标时是否自动回写重试。默认 false：首次生成的质检结果只作参考，
+    # 章节进入待审核，由用户逐章核对后自行编辑或重新生成，避免回写循环烧 token
+    auto-rewrite: false
+    # 启动时删除历史 #M 模型变体，只保留 01–07 基础流程
+    purge-flow-variants: true
+  # 章节规则质检（ShReportQualityChecker）：体例调整改这里即可，无需改代码
+  qc:
+    min-length: 200
+    # 需要 Markdown 数据表格的章节
+    table-chapters: '1,3,4,6'
+    # 各章体例关键词（JSON：章节号 → 关键词组数组，组内 | 分隔备选词，命中任一即可；删除本行用内置默认）
+    chapter-keywords: '{"1":["流域|面积"],"3":["防治对象"],"4":["壅水|漫流|溃决"],"5":["历史|灾害"],"6":["危险区|警戒区|分区"],"7":["建议|对策"]}'
+  # 并发控制：大模型处理耗时较长，并发过高会在模型侧排队超时（提示"当前用户较多，排队中"）
+  concurrency:
+    # 同时执行的报告任务数（整份报告 / 单章重新生成，跨AI助手与后台入口全局生效）
+    max-running-tasks: 2
+    # 同时调用大模型的章节数。2026-10 实测 plan 端点 ark-code-latest 6 路并发稳定
+    # （每路仍 ~55 tok/s，无排队报错），6 章 + 第 7 章可一波跑完；
+    # 若模型侧重新出现"排队中"报错，先回调到 4 或 2
+    max-llm-calls: 6
+    # 拿不到大模型调用额度时的最长等待时间（秒）
+    llm-wait-seconds: 600
+  map:
+    # 天地图 WMTS tk（与旧一张图工程同一把开发 key，生产请换成自己的）
+    tianditu-key: ''
+    # 默认视野：中国全图
+    center-lat: 35.6
+    center-lng: 104.2
+    zoom: 4
+  file:
+    # 一张图调查成果照片根目录：Windows 用盘符路径，Linux 部署改为挂载目录（如 /data/shreport/photos），
+    # 库表只存相对路径，切换部署环境仅需修改本配置
+    root-path: 'D:\甘肃\审核汇集2025\甘肃审核汇集2025一期126'
+    # 预览允许的扩展名白名单（小写，逗号分隔）
+    allowed-ext: jpg,jpeg,png,webp,bmp,mp4,mov,webm

@@ -505,6 +505,8 @@
         }
         if(value === "IMAGE" && modelData.value.baseImageUrl){
           setFieldsValue({ 'baseUrl': modelData.value.baseImageUrl })
+        } else if(value === "EMBED" && modelData.value.baseEmbedUrl){
+          setFieldsValue({ 'baseUrl': modelData.value.baseEmbedUrl })
         } else if(modelData.value.baseUrl) {
           setFieldsValue({ 'baseUrl': modelData.value.baseUrl })
         }

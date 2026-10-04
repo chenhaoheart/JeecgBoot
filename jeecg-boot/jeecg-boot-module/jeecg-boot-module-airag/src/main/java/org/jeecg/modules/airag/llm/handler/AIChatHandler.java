@@ -5,10 +5,15 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.exception.ToolExecutionException;
 import dev.langchain4j.mcp.McpToolProvider;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.output.TokenUsage;
 import dev.langchain4j.rag.query.router.QueryRouter;
 import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.tool.ToolExecutor;
 import lombok.extern.slf4j.Slf4j;
+import org.jeecg.ai.factory.AiModelFactory;
 import org.jeecg.ai.handler.LLMHandler;
 import org.jeecg.common.exception.JeecgBootBizTipException;
 import org.jeecg.common.exception.JeecgBootException;
@@ -30,6 +35,21 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
+import javax.imageio.ImageReader;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.ImageOutputStream;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -103,7 +123,10 @@ public class AIChatHandler implements IAIChatHandler {
         AssertUtils.assertNotEmpty("请选择模型", modelId);
 
         AiragModel airagModel = airagModelMapper.getByIdIgnoreTenant(modelId);
-        //AssertUtils.assertSame("模型未激活,请先在[AI模型配置]中[测试激活]模型", airagModel.getActivateFlag(), 1);
+        if (airagModel == null || airagModel.getActivateFlag() == null || airagModel.getActivateFlag() == 0) {
+            log.warn("模型[{}]不存在或未激活，改用系统默认模型", modelId);
+            return completionsByDefaultModel(messages, params);
+        }
         return completions(airagModel, messages, params);
     }
 
@@ -118,6 +141,9 @@ public class AIChatHandler implements IAIChatHandler {
      * @date 2025/2/24 17:30
      */
     public String completions(AiragModel airagModel, List<ChatMessage> messages, AIChatParams params) {
+        if (airagModel == null) {
+            airagModel = new AiragModel();
+        }
         params = mergeParams(airagModel, params);
         //update-begin---author:scott ---date:20260429  for：[issues/9585]DeepSeek大模型切换为新发布deepseek-v4-flash，流程中调用出现异常------------
         messages = injectThinkingPlaceholderIfNeeded(messages, airagModel.getModelName());
@@ -153,7 +179,85 @@ public class AIChatHandler implements IAIChatHandler {
      */
     @Override
     public String completionsByDefaultModel(List<ChatMessage> messages, AIChatParams params) {
+        // 与 chatByDefaultModel 一致：airag_model 默认 LLM（火山方舟-agent）优先，空模型才会回退 jeecg.ai-chat
+        AiragModel defaultModel = getDefaultChatModel();
+        if (defaultModel != null) {
+            return completions(defaultModel, messages, params);
+        }
         return completions(new AiragModel(), messages, params);
+    }
+
+    /**
+     * 问答并返回 token 用量（供山洪报告助手等需要统计消耗的场景）。
+     * LLMHandler.completions 只返回文本，ChatResponse.tokenUsage 在底层被丢弃，
+     * 因此这里直接创建 ChatModel 执行单轮补全以保留用量；不支持工具调用。
+     * 返回字段：text / inputTokens / outputTokens / totalTokens / estimated（模型未返回用量时按字符数估算并置 true）。
+     */
+    public JSONObject completionsWithUsage(String modelId, List<ChatMessage> messages, AIChatParams params) {
+        AssertUtils.assertNotEmpty("至少发送一条消息", messages);
+        AiragModel airagModel = null;
+        if (oConvertUtils.isNotEmpty(modelId)) {
+            airagModel = airagModelMapper.getByIdIgnoreTenant(modelId);
+            if (airagModel == null || airagModel.getActivateFlag() == null || airagModel.getActivateFlag() == 0) {
+                log.warn("模型[{}]不存在或未激活，改用系统默认模型", modelId);
+                airagModel = null;
+            }
+        }
+        if (airagModel == null) {
+            // 前端设置的默认模型优先，其次 jeecg.ai-chat 平台底层配置
+            airagModel = getDefaultChatModel();
+        }
+        return completionsWithUsage(airagModel, messages, params);
+    }
+
+    public JSONObject completionsWithUsage(AiragModel airagModel, List<ChatMessage> messages, AIChatParams params) {
+        if (airagModel == null) {
+            airagModel = new AiragModel();
+        }
+        params = mergeParams(airagModel, params);
+        messages = injectThinkingPlaceholderIfNeeded(messages, airagModel.getModelName());
+        try {
+            ChatModel chatModel = AiModelFactory.createChatModel(params.toModelOptions());
+            ChatResponse response = chatModel.chat(ChatRequest.builder().messages(messages).build());
+            AiMessage aiMessage = response.aiMessage();
+            String text = aiMessage == null ? null : aiMessage.text();
+            if (text != null && text.contains("</think>")
+                    && (null == params.getNoThinking() || params.getNoThinking())) {
+                String[] thinkSplit = text.split("</think>");
+                text = thinkSplit[thinkSplit.length - 1];
+            }
+            JSONObject out = new JSONObject();
+            out.put("text", text);
+            TokenUsage usage = response.tokenUsage();
+            if (usage != null && usage.totalTokenCount() != null && usage.totalTokenCount() > 0) {
+                out.put("inputTokens", usage.inputTokenCount() == null ? 0 : usage.inputTokenCount());
+                out.put("outputTokens", usage.outputTokenCount() == null ? 0 : usage.outputTokenCount());
+                out.put("totalTokens", usage.totalTokenCount());
+            } else {
+                int inChars = 0;
+                for (ChatMessage m : messages) {
+                    inChars += messageText(m).length();
+                }
+                int outChars = text == null ? 0 : text.length();
+                out.put("inputTokens", Math.round(inChars / 2.0));
+                out.put("outputTokens", Math.round(outChars / 2.0));
+                out.put("totalTokens", Math.round((inChars + outChars) / 2.0));
+                out.put("estimated", true);
+            }
+            return out;
+        } catch (Exception e) {
+            throw translateLlmException(e, "调用大模型接口失败，详情请查看后台日志。");
+        }
+    }
+
+    private static String messageText(ChatMessage m) {
+        if (m instanceof SystemMessage sm) {
+            return sm.text();
+        }
+        if (m instanceof UserMessage um) {
+            return um.singleText();
+        }
+        return String.valueOf(m);
     }
 
     /**
@@ -207,6 +311,9 @@ public class AIChatHandler implements IAIChatHandler {
      * @date 2025/2/24 17:29
      */
     private TokenStream chat(AiragModel airagModel, List<ChatMessage> messages, AIChatParams params) {
+        if (airagModel == null) {
+            airagModel = new AiragModel();
+        }
         params = mergeParams(airagModel, params);
         //update-begin---author:scott ---date:20260429  for：[issues/9585]DeepSeek大模型切换为新发布deepseek-v4-flash，流程中调用出现异常------------
         messages = injectThinkingPlaceholderIfNeeded(messages, airagModel.getModelName());
@@ -277,7 +384,25 @@ public class AIChatHandler implements IAIChatHandler {
      */
     @Override
     public TokenStream chatByDefaultModel(List<ChatMessage> messages, AIChatParams params) {
+        // 优先用前端「AI模型」页设置的默认模型；未设置时回退 jeecg.ai-chat 平台底层配置
+        AiragModel defaultModel = getDefaultChatModel();
+        if (defaultModel != null) {
+            return chat(defaultModel, messages, params);
+        }
         return chat(new AiragModel(), messages, params);
+    }
+
+    /**
+     * 默认对话模型：airag_model 中 iz_default=1 且已激活的 LLM（前端模型管理页可设置，同类型互斥）。
+     * 未设置或查询异常返回 null，由调用方回退 jeecg.ai-chat 平台底层配置。
+     */
+    public AiragModel getDefaultChatModel() {
+        try {
+            return airagModelMapper.getDefaultChatModel();
+        } catch (Exception e) {
+            log.warn("查询默认对话模型失败，回退平台底层配置：{}", e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -538,9 +663,16 @@ public class AIChatHandler implements IAIChatHandler {
                     SsrfFileTypeFilter.checkPathTraversal(filePath);
                     Path path = Paths.get(filePath);
                     byte[] fileContent = Files.readAllBytes(path);
-                    String base64Data = Base64.getEncoder().encodeToString(fileContent);
-                    // 获取文件的 MIME 类型
                     String mimeType = Files.probeContentType(path);
+                    //update-begin---author:zcode---date:20261004---for:【AI】本地图片服务端压缩后再传模型（缩到视觉模型预处理尺寸，不损识别信息）-----------
+                    byte[] compressed = compressForVision(fileContent);
+                    if (compressed != fileContent) {
+                        // 重编码过，内容已是JPEG
+                        mimeType = "image/jpeg";
+                        fileContent = compressed;
+                    }
+                    //update-end---author:zcode---date:20261004---for:【AI】本地图片服务端压缩后再传模型（缩到视觉模型预处理尺寸，不损识别信息）-----------
+                    String base64Data = Base64.getEncoder().encodeToString(fileContent);
                     // 构建 ImageContent 对象
                     imageContents.add(ImageContent.from(base64Data, mimeType));
                 } catch (IOException e) {
@@ -551,6 +683,263 @@ public class AIChatHandler implements IAIChatHandler {
         }
         return imageContents;
     }
+
+    /**
+     * 把已读入内存的图片转成视觉模型入参，并复用服务端压缩。
+     * 调查成果照片在上传目录之外，不能走 {@link #buildImageContents(List)} 的相对路径。
+     */
+    public ImageContent imageContentFromBytes(byte[] rawBytes, String mimeType) {
+        if (rawBytes == null || rawBytes.length == 0) {
+            return null;
+        }
+        String mime = (mimeType == null || mimeType.isBlank()) ? "image/jpeg" : mimeType;
+        byte[] fileContent = rawBytes;
+        byte[] compressed = compressForVision(rawBytes);
+        if (compressed != rawBytes) {
+            mime = "image/jpeg";
+            fileContent = compressed;
+        }
+        return ImageContent.from(Base64.getEncoder().encodeToString(fileContent), mime);
+    }
+
+    //================================================= begin 【AI图片预处理】服务端压缩（zcode, 20261004） ========================================
+
+    /**
+     * 视觉模型预处理目标边长(px)：与主流视觉模型服务端预处理上限对齐（OpenAI 系长边约1568px）。
+     * 服务端本来就会把超尺寸图缩到该范围再做视觉编码，因此这里预缩放不会损失模型可见的识别信息。
+     */
+    private static final int IMAGE_VISION_MAX_EDGE = 1568;
+    /** JPEG 重编码质量 */
+    private static final float IMAGE_JPEG_QUALITY = 0.85f;
+    /** 无需缩放且小于该字节数的图原样透传，避免无谓的重编码 */
+    private static final int IMAGE_PASSTHROUGH_MAX_BYTES = 300 * 1024;
+    /** 长宽比超过该值的图（长截图等）不缩放，避免把窄条内容压碎 */
+    private static final float IMAGE_MAX_ASPECT_RATIO = 4.0f;
+
+    /**
+     * 服务端图片压缩：把手机原图等大图缩到视觉模型预处理尺寸并重编码为JPEG。
+     * 设计原则：
+     * 1. 只缩超过 {@link #IMAGE_VISION_MAX_EDGE} 的边；模型服务端收图后同样会缩到该范围，故无信息损失；
+     * 2. 超大图用 ImageReader 抽样解码（如8000px原图按1/4抽样），避免整图解码吃掉几百MB堆内存；
+     * 3. 按手机照片EXIF方向摆正（ImageIO不读EXIF，浏览器看着是正的，模型收到的是横的）；
+     * 4. 透明通道铺白底转JPEG；重编码后若没变小则放弃，使用原图。
+     * 任何异常都退回原始字节，不影响消息发送。
+     */
+    private byte[] compressForVision(byte[] rawBytes) {
+        try {
+            ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(rawBytes));
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
+            if (!readers.hasNext()) {
+                return rawBytes;
+            }
+            ImageReader reader = readers.next();
+            reader.setInput(in);
+            String formatName = reader.getFormatName();
+            // 动图等非拍照格式不处理
+            if ("gif".equalsIgnoreCase(formatName)) {
+                return rawBytes;
+            }
+            int width = reader.getWidth(0);
+            int height = reader.getHeight(0);
+            int longEdge = Math.max(width, height);
+            if (longEdge <= 0) {
+                return rawBytes;
+            }
+            boolean needResize = longEdge > IMAGE_VISION_MAX_EDGE
+                    && Math.max(width, height) * 1.0f / Math.min(width, height) <= IMAGE_MAX_ASPECT_RATIO;
+            boolean needRecode = rawBytes.length > IMAGE_PASSTHROUGH_MAX_BYTES;
+            if (!needResize && !needRecode) {
+                return rawBytes;
+            }
+            // 抽样解码：解码分辨率直接压到目标边长的2倍以内，随后精确缩放
+            BufferedImage decoded;
+            try {
+                ImageReadParam readParam = reader.getDefaultReadParam();
+                int subsample = Math.max(1, longEdge / (IMAGE_VISION_MAX_EDGE * 2));
+                if (subsample > 1) {
+                    readParam.setSourceSubsampling(subsample, subsample, 0, 0);
+                }
+                decoded = reader.read(0, readParam);
+            } finally {
+                reader.dispose();
+                in.close();
+            }
+            if (decoded == null) {
+                return rawBytes;
+            }
+            int orientation = readJpegExifOrientation(rawBytes);
+            boolean swapped = orientation >= 5;
+            int canvasW = swapped ? decoded.getHeight() : decoded.getWidth();
+            int canvasH = swapped ? decoded.getWidth() : decoded.getHeight();
+            float scale = Math.min(1f, (float) IMAGE_VISION_MAX_EDGE / Math.max(canvasW, canvasH));
+            int targetW = Math.max(1, Math.round(canvasW * scale));
+            int targetH = Math.max(1, Math.round(canvasH * scale));
+
+            BufferedImage target = new BufferedImage(targetW, targetH, BufferedImage.TYPE_INT_RGB);
+            Graphics2D graphics = target.createGraphics();
+            try {
+                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                graphics.setColor(Color.WHITE);
+                graphics.fillRect(0, 0, targetW, targetH);
+                AffineTransform transform = orientationTransform(orientation, decoded.getWidth(), decoded.getHeight());
+                if (scale < 1f) {
+                    transform.preConcatenate(AffineTransform.getScaleInstance(scale, scale));
+                }
+                graphics.drawImage(decoded, transform, null);
+            } finally {
+                graphics.dispose();
+            }
+            byte[] compressed = encodeJpeg(target, IMAGE_JPEG_QUALITY);
+            if (compressed == null || compressed.length >= rawBytes.length) {
+                return rawBytes;
+            }
+            if (log.isDebugEnabled()) {
+                log.debug("[ai-image]图片预处理: {}KB -> {}KB, {}x{} -> {}x{}",
+                        rawBytes.length / 1024, compressed.length / 1024, width, height, targetW, targetH);
+            }
+            return compressed;
+        } catch (Exception e) {
+            log.warn("[ai-image]图片预处理失败,使用原图: {}", e.getMessage());
+            return rawBytes;
+        }
+    }
+
+    /** 按指定质量编码JPEG；失败返回null（调用方使用原图） */
+    private byte[] encodeJpeg(BufferedImage image, float quality) {
+        try {
+            ImageWriter writer = ImageIO.getImageWritersByFormatName("jpg").next();
+            ImageWriteParam writeParam = writer.getDefaultWriteParam();
+            writeParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            writeParam.setCompressionQuality(quality);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ImageOutputStream ios = ImageIO.createImageOutputStream(out);
+            try {
+                writer.setOutput(ios);
+                writer.write(null, new IIOImage(image, null, null), writeParam);
+            } finally {
+                writer.dispose();
+                ios.close();
+            }
+            return out.toByteArray();
+        } catch (Exception e) {
+            log.warn("[ai-image]JPEG重编码失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 读手机照片JPEG的EXIF方向标记（tag 0x0112）；非JPEG或无标记返回1（不旋转）
+     */
+    private int readJpegExifOrientation(byte[] bytes) {
+        try {
+            if (bytes.length < 12 || (bytes[0] & 0xFF) != 0xFF || (bytes[1] & 0xFF) != 0xD8) {
+                return 1;
+            }
+            int i = 2;
+            while (i + 4 < bytes.length) {
+                if ((bytes[i] & 0xFF) != 0xFF) {
+                    i++;
+                    continue;
+                }
+                int marker = bytes[i + 1] & 0xFF;
+                if (marker == 0xD8 || (marker >= 0xD0 && marker <= 0xD7) || marker == 0x01) {
+                    i += 2;
+                    continue;
+                }
+                if (marker == 0xDA) {
+                    break;
+                }
+                int segLen = ((bytes[i + 2] & 0xFF) << 8) | (bytes[i + 3] & 0xFF);
+                if (segLen < 2) {
+                    break;
+                }
+                if (marker == 0xE1 && i + 10 <= bytes.length
+                        && bytes[i + 4] == 'E' && bytes[i + 5] == 'x' && bytes[i + 6] == 'i' && bytes[i + 7] == 'f'
+                        && bytes[i + 8] == 0 && bytes[i + 9] == 0) {
+                    return parseTiffOrientation(bytes, i + 10);
+                }
+                i += 2 + segLen;
+            }
+        } catch (Exception ignore) {
+        }
+        return 1;
+    }
+
+    private int parseTiffOrientation(byte[] bytes, int tiffStart) {
+        if (tiffStart + 8 > bytes.length) {
+            return 1;
+        }
+        boolean littleEndian = (bytes[tiffStart] & 0xFF) == 0x49 && (bytes[tiffStart + 1] & 0xFF) == 0x49;
+        int ifdOffset = (int) readUnsigned(bytes, tiffStart + 4, 4, littleEndian);
+        int p = tiffStart + ifdOffset;
+        if (p + 2 > bytes.length) {
+            return 1;
+        }
+        int entryCount = (int) readUnsigned(bytes, p, 2, littleEndian);
+        p += 2;
+        for (int k = 0; k < entryCount && p + 12 <= bytes.length; k++, p += 12) {
+            int tag = (int) readUnsigned(bytes, p, 2, littleEndian);
+            if (tag == 0x0112) {
+                int value = (int) readUnsigned(bytes, p + 8, 2, littleEndian);
+                return (value >= 1 && value <= 8) ? value : 1;
+            }
+        }
+        return 1;
+    }
+
+    private long readUnsigned(byte[] bytes, int offset, int length, boolean littleEndian) {
+        long value = 0;
+        for (int k = 0; k < length; k++) {
+            int idx = littleEndian ? offset + k : offset + length - 1 - k;
+            value = (value << 8) | (bytes[idx] & 0xFF);
+        }
+        return value;
+    }
+
+    /**
+     * EXIF orientation → 仿射变换（经典映射；5-8会交换宽高）
+     */
+    private AffineTransform orientationTransform(int orientation, int width, int height) {
+        AffineTransform transform = new AffineTransform();
+        switch (orientation) {
+            case 2:
+                transform.scale(-1.0, 1.0);
+                transform.translate(-width, 0);
+                break;
+            case 3:
+                transform.translate(width, height);
+                transform.rotate(Math.PI);
+                break;
+            case 4:
+                transform.scale(-1.0, 1.0);
+                transform.translate(0, -height);
+                break;
+            case 5:
+                transform.scale(-1.0, 1.0);
+                transform.rotate(-Math.PI / 2);
+                break;
+            case 6:
+                transform.translate(height, 0);
+                transform.rotate(Math.PI / 2);
+                break;
+            case 7:
+                transform.scale(-1.0, 1.0);
+                transform.translate(-height, 0);
+                transform.translate(0, width);
+                transform.rotate(3 * Math.PI / 2);
+                break;
+            case 8:
+                transform.translate(0, width);
+                transform.rotate(3 * Math.PI / 2);
+                break;
+            default:
+                break;
+        }
+        return transform;
+    }
+    //================================================= end 【AI图片预处理】服务端压缩（zcode, 20261004） ========================================
 
     //================================================= begin【QQYUN-12145】【AI】AI 绘画创作 ========================================
     /**

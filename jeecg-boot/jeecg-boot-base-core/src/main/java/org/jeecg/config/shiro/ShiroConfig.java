@@ -8,6 +8,7 @@ import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.apache.shiro.mgt.DefaultSessionStorageEvaluator;
 import org.apache.shiro.mgt.DefaultSubjectDAO;
 import org.apache.shiro.mgt.SecurityManager;
+import org.apache.shiro.SecurityUtils;
 import org.apache.shiro.spring.LifecycleBeanPostProcessor;
 import org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor;
 import org.apache.shiro.spring.web.ShiroFilterFactoryBean;
@@ -249,6 +250,11 @@ public class ShiroConfig {
         registration.addUrlPatterns("/drag/page/aiDiscussScreenSse");
         registration.addUrlPatterns("/jmreport/ai/assistant/*");
         registration.addUrlPatterns("/jimu/chat2bi/table-meta/syncTables");
+        // 山洪报告 AI 助手 SSE（Shiro 默认不支持异步，须显式登记）
+        registration.addUrlPatterns("/sh/report/agent/chat/send");
+        registration.addUrlPatterns("/sh/report/agent/outline/confirm");
+        registration.addUrlPatterns("/sh/report/agent/receive/*");
+        registration.addUrlPatterns("/sh/report/graph/demo");
         //支持异步
         registration.setAsyncSupported(true);
         registration.setDispatcherTypes(DispatcherType.REQUEST, DispatcherType.ASYNC);
@@ -272,6 +278,9 @@ public class ShiroConfig {
         securityManager.setSubjectDAO(subjectDAO);
         //自定义缓存实现,使用redis
         securityManager.setCacheManager(redisCacheManager());
+        // 设置为 JVM 级静态单例，保证异步/SSE(如山洪报告助手)完成回调运行在非请求线程时，
+        // SecurityUtils.getSubject() 仍能取到 Subject（匿名），避免 No SecurityManager accessible 异常。
+        SecurityUtils.setSecurityManager(securityManager);
         return securityManager;
     }
 

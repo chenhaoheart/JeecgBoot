@@ -97,12 +97,7 @@
       icon: 'https://jeecgdev.oss-cn-beijing.aliyuncs.com/upload/test/helpWriting_1765520898059.png',
       prologue: '请输入\n出发地：\n目的地：\n人数：',
     },
-    {
-      id: '1996471445272088578',
-      name: '图像识别',
-      icon: 'https://jeecgdev.oss-cn-beijing.aliyuncs.com/temp/1dataOCR_1743065089791.png',
-      prologue: '上传一张图片，我来为你识别图片的内容',
-    },
+    // 「图像识别」已抽取为独立子菜单（super/airag/imgrec/ImageRecognition），不再作为门户应用
     {
       id: '1902262577996546050',
       name: '看图说话',

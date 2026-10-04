@@ -6,7 +6,8 @@
           <div style="display: flex">
             <img :src="getImage()" class="header-img"/>
             <div class="header-name">{{formState.name}}</div>
-            <a-tooltip v-if="!isRelease" title="编辑">
+            <a-tag v-if="isPublished" color="green" style="margin-left: 8px">已发布</a-tag>
+            <a-tooltip title="编辑">
               <Icon icon="ant-design:edit-outlined" style="margin-left: 4px;cursor: pointer" color="#354052" size="20" @click="handleEdit"></Icon>
             </a-tooltip>
           </div>
@@ -19,14 +20,17 @@
             </a-tooltip>
           </div>
           <div style="display: flex">
-            <a-button v-if="!isRelease" @click="handleOk" style="margin-right: 30px" type="primary">保存</a-button>
+            <a-button @click="handleOk" style="margin-right: 30px" type="primary">{{ isPublished ? '保存并生效' : '保存' }}</a-button>
           </div>
         </div>
       </template>
       <div style="height: 100%; width: 100%">
         <a-row :span="24">
           <a-col :span="10">
-            <div class="orchestration">编排</div>
+            <div class="orchestration">
+              编排
+              <span v-if="isPublished" class="published-hint">已发布，保存后对访客即时生效</span>
+            </div>
           </a-col>
           <a-col :span="14">
             <div class="view">预览</div>
@@ -643,7 +647,9 @@
       const izDrawChecked = ref<boolean>(false);
       //显示工具调用过程
       const showToolProcessChecked = ref<boolean>(true);
-      // 是否已发布
+      // 是否已发布（仅展示标记；发布后仍允许编排修改）
+      const isPublished = ref<boolean>(false);
+      // 历史锁：不再用发布状态禁用表单
       const isRelease = ref<boolean>(false);
       //对话设置弹窗ref
       const settingsModalRef = ref();
@@ -670,7 +676,8 @@
       const [registerModal, { closeModal, setModalProps }] = useModalInner(async (data) => {
         appId.value = data.id;
         isUpdate.value = !!data?.isUpdate;
-        isRelease.value = data?.status === 'release';
+        isPublished.value = data?.status === 'release';
+        isRelease.value = false;
         clearParam();
         if (isUpdate.value) {
           setTimeout(() => {
@@ -1711,6 +1718,7 @@
         registerModal,
         title,
         isRelease,
+        isPublished,
         handleOk,
         handleCancel,
         appTypeOption,
@@ -1821,6 +1829,13 @@
     font-size: 18px;
     width: 100%;
     padding-bottom: 10px;
+  }
+  .published-hint {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 12px;
+    font-weight: normal;
+    color: #52c41a;
   }
   .type-title {
     color: #1d2025;

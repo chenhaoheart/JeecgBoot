@@ -30,9 +30,9 @@ spring:
           slow-sql-millis: 5000
       datasource:
         master:
-          url: jdbc:mysql://jeecg-boot-mysql:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+          url: jdbc:mysql://localhost:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
           username: root
-          password: root
+          password: 123456
           driver-class-name: com.mysql.cj.jdbc.Driver
         # sharding-db:
         #  driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
@@ -40,8 +40,8 @@ spring:
   data:
     redis:
       database: 0
-      host: jeecg-boot-redis
-      password:
+      host: localhost
+      password: 123456
       port: 6379
   rabbitmq:
     host: jeecg-boot-rabbitmq

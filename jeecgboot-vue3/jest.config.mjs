@@ -16,6 +16,7 @@ export default {
     '/node_modules/',
   ],
   transform: {
+    '^.+\\.vue$': '@vue/vue3-jest',
     '^.+\\.tsx?$': 'ts-jest',
   },
   transformIgnorePatterns: ['<rootDir>/tests/__mocks__/', '/node_modules/'],

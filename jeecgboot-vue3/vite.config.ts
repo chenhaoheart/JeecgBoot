@@ -143,6 +143,7 @@ export default async ({ command, mode }: ConfigEnv): Promise<UserConfig> => {
               vuedraggable: 'vuedraggable-vendor',
               tinymce: 'tinymce-vendor',
               '@tinymce/tinymce-vue': 'tinymce-vendor',
+              leaflet: 'leaflet-vendor',
             };
             return packageToChunk[pkgName];
           },
@@ -209,6 +210,7 @@ export default async ({ command, mode }: ConfigEnv): Promise<UserConfig> => {
         'vxe-table',
         'vxe-pc-ui',
         'vxe-table-plugin-antd',
+        'leaflet',
       ],
       exclude: [
         //升级vite4后，需要排除online和aiflow依赖

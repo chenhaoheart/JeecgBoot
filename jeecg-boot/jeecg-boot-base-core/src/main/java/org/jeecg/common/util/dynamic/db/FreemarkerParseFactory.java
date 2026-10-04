@@ -124,12 +124,18 @@ public class FreemarkerParseFactory {
     }
     public static String parseTemplateContent(String tplContent, Map<String, Object> paras, boolean keepSpace) {
         try {
-            String sqlUnderline="sql_";
+            String sqlUnderline = "sql_";
             StringWriter swriter = new StringWriter();
-            if (stringTemplateLoader.findTemplateSource(sqlUnderline + tplContent.hashCode()) == null) {
-                stringTemplateLoader.putTemplate(sqlUnderline + tplContent.hashCode(), tplContent);
+            // 报告生成并发提升后，多个线程会同时进入本方法：共享 StringTemplateLoader 的
+            // find→put 无锁登记 + String.hashCode 作缓存键，并发下会出现模板错乱/解析失败。
+            // 改为内容 SHA-256 作键（杜绝碰撞取错模板），登记过程加锁（消除并发竞态）
+            String tplKey = sqlUnderline + org.apache.commons.codec.digest.DigestUtils.sha256Hex(tplContent);
+            synchronized (stringTemplateLoader) {
+                if (stringTemplateLoader.findTemplateSource(tplKey) == null) {
+                    stringTemplateLoader.putTemplate(tplKey, tplContent);
+                }
             }
-            Template mytpl = SQL_CONFIG.getTemplate(sqlUnderline + tplContent.hashCode(), ENCODE);
+            Template mytpl = SQL_CONFIG.getTemplate(tplKey, ENCODE);
             if (paras.containsKey(MINI_DAO_FORMAT)) {
                 throw new RuntimeException("DaoFormat 是 minidao 保留关键字，不允许使用 ，请更改参数定义！");
             }

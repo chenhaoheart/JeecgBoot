@@ -1,6 +1,7 @@
 package org.jeecg.modules.airag.llm.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import dev.langchain4j.data.message.UserMessage;
@@ -123,6 +124,34 @@ public class AiragModelController extends JeecgController<AiragModel, IAiragMode
     public Result<String> edit(@RequestBody AiragModel airagModel) {
         airagModelService.updateById(airagModel);
         return Result.OK("编辑成功!");
+    }
+
+    /**
+     * 设为默认模型：同一模型类型下互斥（原默认自动取消），仅激活中的模型可设。
+     * 平台各处未显式指定模型时优先使用该默认模型（替代 yml 中写死的默认模型配置）。
+     *
+     * @param id 模型ID
+     * @return 设置后的模型信息
+     */
+    @PostMapping(value = "/setDefault")
+    @RequiresPermissions("airag:model:edit")
+    public Result<AiragModel> setDefault(@RequestParam("id") String id) {
+        AiragModel model = airagModelService.getById(id);
+        if (model == null) {
+            return Result.error("模型不存在");
+        }
+        if (model.getActivateFlag() == null || model.getActivateFlag() != 1) {
+            return Result.error("请先激活模型，再设为默认");
+        }
+        LambdaUpdateWrapper<AiragModel> clearOld = new LambdaUpdateWrapper<>();
+        clearOld.eq(AiragModel::getModelType, model.getModelType())
+                .eq(AiragModel::getIzDefault, 1)
+                .ne(AiragModel::getId, id)
+                .set(AiragModel::getIzDefault, 0);
+        airagModelService.update(clearOld);
+        model.setIzDefault(1);
+        airagModelService.updateById(model);
+        return Result.OK("已设为默认模型", model);
     }
 
     /**

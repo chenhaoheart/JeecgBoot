@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.airag.shreport.mapper.ShReportAgentSessionMapper">
+
+    <!-- 山洪报告助手会话持久化（一张图 PostgreSQL shreport_map 库）。
+         upsert 的语义约定：messages 整列覆盖（调用方已按 ShReportSessionMessageMerge 做并集），
+         其余元数据经 COALESCE 保留库中原值，防止后端部分保存（只带 conversationId/messages/updateTime）
+         把标题/流域/模型/归档标记清空。archived 用显式 CAST 保证 PG 对 null 参数的类型推断。 -->
+
+    <update id="createTableIfNotExists">
+        CREATE TABLE IF NOT EXISTS sh_report_agent_session (
+            id BIGSERIAL PRIMARY KEY,
+            user_id VARCHAR(64) NOT NULL,
+            conversation_id VARCHAR(64) NOT NULL,
+            batch_no VARCHAR(64),
+            lybm VARCHAR(64),
+            lymc VARCHAR(255),
+            model_id VARCHAR(64),
+            model_label VARCHAR(255),
+            title VARCHAR(500),
+            messages TEXT,
+            update_time BIGINT,
+            create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            archived SMALLINT NOT NULL DEFAULT 0,
+            CONSTRAINT uk_user_conv UNIQUE (user_id, conversation_id)
+        )
+    </update>
+
+    <select id="listByUser" resultType="org.jeecg.modules.airag.shreport.entity.ShReportAgentSession">
+        SELECT *
+        FROM sh_report_agent_session
+        WHERE user_id = #{userId}
+        ORDER BY update_time DESC
+    </select>
+
+    <select id="selectForUpdate" resultType="org.jeecg.modules.airag.shreport.entity.ShReportAgentSession">
+        SELECT *
+        FROM sh_report_agent_session
+        WHERE user_id = #{userId} AND conversation_id = #{conversationId}
+        FOR UPDATE
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO sh_report_agent_session
+            (user_id, conversation_id, batch_no, lybm, lymc, model_id, model_label, title, messages, update_time, archived)
+        VALUES
+            (#{userId}, #{conversationId}, #{batchNo}, #{lybm}, #{lymc}, #{modelId}, #{modelLabel},
+             #{title}, #{messages,jdbcType=LONGVARCHAR}, #{updateTime},
+             COALESCE(CAST(#{archived,jdbcType=SMALLINT} AS smallint), 0))
+        ON CONFLICT (user_id, conversation_id) DO UPDATE SET
+            batch_no     = COALESCE(EXCLUDED.batch_no, sh_report_agent_session.batch_no),
+            lybm         = COALESCE(EXCLUDED.lybm, sh_report_agent_session.lybm),
+            lymc         = COALESCE(EXCLUDED.lymc, sh_report_agent_session.lymc),
+            model_id     = COALESCE(EXCLUDED.model_id, sh_report_agent_session.model_id),
+            model_label  = COALESCE(EXCLUDED.model_label, sh_report_agent_session.model_label),
+            title        = COALESCE(EXCLUDED.title, sh_report_agent_session.title),
+            messages     = EXCLUDED.messages,
+            archived     = COALESCE(CAST(#{archived,jdbcType=SMALLINT} AS smallint), sh_report_agent_session.archived),
+            update_time  = GREATEST(COALESCE(sh_report_agent_session.update_time, 0), EXCLUDED.update_time)
+    </insert>
+
+    <delete id="deleteByUserAndConversationId">
+        DELETE FROM sh_report_agent_session
+        WHERE user_id = #{userId} AND conversation_id = #{conversationId}
+    </delete>
+
+</mapper>

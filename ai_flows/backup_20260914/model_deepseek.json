@@ -1,0 +1,1 @@
+{"id": "1897481367743143938", "name": "deepseek", "provider": "DEEPSEEK", "model_name": "deepseek-chat", "credential": "{\"apiKey\":\"您在官网上申请的key\"}", "base_url": "https://api.deepseek.com/v1", "activate_flag": 1}

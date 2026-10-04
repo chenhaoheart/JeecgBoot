@@ -79,8 +79,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: vector_db
-#    ports:
-#      - 5432:5432
+    # 本机已有 PostgreSQL 占用 5432（山洪一张图），向量库改映射 5433
+    ports:
+      - 5433:5432
     restart: always
     networks:
       - jeecg-boot

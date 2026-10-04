@@ -107,4 +107,10 @@ public class ChatSendParams {
      */
     private Boolean izSaveSession;
 
+    /**
+     * 页面选择的模型ID。默认助手页、chatSimple 应用（含编排预览）切换模型时透传；
+     * 为空时助手页走平台默认模型，应用聊天走应用配置模型。仅登录用户生效。
+     */
+    private String modelId;
+
 }

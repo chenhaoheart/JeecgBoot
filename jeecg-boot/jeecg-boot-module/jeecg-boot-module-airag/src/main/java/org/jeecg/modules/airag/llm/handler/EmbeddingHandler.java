@@ -9,6 +9,7 @@ import dev.langchain4j.data.document.splitter.DocumentSplitters;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
+import dev.langchain4j.model.output.Response;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
 import dev.langchain4j.rag.query.router.DefaultQueryRouter;
@@ -198,7 +199,7 @@ public class EmbeddingHandler implements IEmbeddingHandler {
         // 向量化 date:2025/2/18
         AiragModel model = getEmbedModelData(airagKnowledge.getEmbedId());
         AiModelOptions modelOp = buildModelOptions(model);
-        EmbeddingModel embeddingModel = AiModelFactory.createEmbeddingModel(modelOp);
+        EmbeddingModel embeddingModel = withEmbedBatchLimit(AiModelFactory.createEmbeddingModel(modelOp));
         EmbeddingStore<TextSegment> embeddingStore = getEmbedStore(model);
         // 删除旧数据
         embeddingStore.removeAll(metadataKey(EMBED_STORE_METADATA_DOCID).isEqualTo(doc.getId()));
@@ -670,6 +671,32 @@ public class EmbeddingHandler implements IEmbeddingHandler {
     }
 
     /**
+     * 火山方舟 Embeddings 单次 input 最多 10 条。
+     */
+    private static final int EMBED_MAX_BATCH = 10;
+
+    private EmbeddingModel withEmbedBatchLimit(EmbeddingModel delegate) {
+        return new EmbeddingModel() {
+            @Override
+            public Response<List<Embedding>> embedAll(List<TextSegment> textSegments) {
+                if (textSegments == null || textSegments.size() <= EMBED_MAX_BATCH) {
+                    return delegate.embedAll(textSegments);
+                }
+                List<Embedding> all = new ArrayList<>(textSegments.size());
+                for (List<TextSegment> batch : Lists.partition(textSegments, EMBED_MAX_BATCH)) {
+                    all.addAll(delegate.embedAll(batch).content());
+                }
+                return Response.from(all);
+            }
+
+            @Override
+            public int dimension() {
+                return delegate.dimension();
+            }
+        };
+    }
+
+    /**
      * 获取向量存储
      *
      * @param model
@@ -713,8 +740,8 @@ public class EmbeddingHandler implements IEmbeddingHandler {
                 // Required: Must match the embedding model’s output dimension
                 .dimension(embeddingModel.dimension())
                 // Indexing and performance options
-                // Enable IVFFlat index
-                .useIndex(true)
+                // IVFFlat 最多 2000 维；豆包 embedding-vision 为 2048，开索引会建表失败
+                .useIndex(false)
                 // Number of lists
                 // for IVFFlat index
                 .indexListSize(100)
@@ -738,7 +765,7 @@ public class EmbeddingHandler implements IEmbeddingHandler {
      */
     public static AiModelOptions buildModelOptions(AiragModel model) {
         AiModelOptions.AiModelOptionsBuilder modelOpBuilder = AiModelOptions.builder()
-                .provider(model.getProvider())
+                .provider(LLMConsts.normalizeLlmProvider(model.getProvider()))
                 .modelName(model.getModelName())
                 .baseUrl(model.getBaseUrl());
         if (oConvertUtils.isObjectNotEmpty(model.getCredential())) {

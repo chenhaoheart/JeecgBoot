@@ -6,7 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.FlywayException;
 import org.springframework.beans.factory.annotation.Autowired;
-
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
@@ -26,6 +26,8 @@ import java.util.Map;
 @Configuration
 public class FlywayConfig {
 
+    // 按类型注入主数据源（dynamic-datasource 路由数据源，标注 @Primary）；
+    // 不要用 @Qualifier("dataSource") 按名注入，那会命中 Druid 自动配置的普通数据源导致强转失败
     @Autowired
     private DataSource dataSource;
 

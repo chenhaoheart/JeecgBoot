@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.airag.shreport.mapper.ShReportPgMapper">
+
+    <!-- 一张图调查成果 PostgreSQL 固定查询。结果统一 LinkedHashMap，保持列顺序（数据包按列序转 Markdown 表）。 -->
+
+    <select id="selectWatershedInfo" resultType="java.util.LinkedHashMap">
+        SELECT wsnm AS "流域全称", COALESCE(NULLIF(TRIM(alias_name),''), wsnm) AS "流域简称",
+               river_name AS "所在水系", wsarea AS "流域面积km2", wsperi AS "流域周长km",
+               wsslp AS "流域坡度", outlet_elv AS "沟口高程m", max_elv AS "最高点高程m",
+               jizhen_count AS "集镇个数", village_count AS "防治村个数", gully_count AS "山洪沟道条数"
+        FROM sh_map_watershed
+        WHERE wscd = #{wscd}
+    </select>
+
+    <select id="selectObjectCountSum" resultType="java.util.LinkedHashMap">
+        SELECT COUNT(*) AS c, COALESCE(SUM(pcount),0) AS p
+        FROM sh_survey_object
+        WHERE wscd = #{wscd}
+    </select>
+
+    <select id="selectObjectTotals" resultType="java.util.LinkedHashMap">
+        SELECT COUNT(*) AS "防治对象总数", COALESCE(SUM(pcount),0) AS "受威胁总人口",
+               COUNT(DISTINCT NULLIF(TRIM(town_name),'')) AS "涉及乡镇数"
+        FROM sh_survey_object
+        WHERE wscd = #{wscd}
+    </select>
+
+    <select id="selectObjectTypes" resultType="java.util.LinkedHashMap">
+        SELECT COALESCE(NULLIF(TRIM(ftp),''),'未分类') AS "类型", COUNT(*) AS "数量",
+               COALESCE(SUM(pcount),0) AS "受威胁人口"
+        FROM sh_survey_object
+        WHERE wscd = #{wscd}
+        GROUP BY 1
+        ORDER BY 2 DESC
+    </select>
+
+    <select id="selectTowns" resultType="java.util.LinkedHashMap">
+        SELECT COALESCE(NULLIF(TRIM(town_name),''),'未知') AS "乡镇",
+               COALESCE(MAX(county_name),'') AS "县区", COUNT(*) AS "防治对象数",
+               COALESCE(SUM(pcount),0) AS "受威胁人口"
+        FROM sh_survey_object
+        WHERE wscd = #{wscd}
+        GROUP BY 1
+        ORDER BY 4 DESC
+    </select>
+
+    <select id="selectKeyObjects" resultType="java.util.LinkedHashMap">
+        SELECT fnm AS "对象名称", COALESCE(NULLIF(TRIM(ftp),''),'未分类') AS "类型",
+               pcount AS "受威胁人口", rvnm AS "所在河流", town_name AS "所在乡镇"
+        FROM sh_survey_object
+        WHERE wscd = #{wscd} AND pcount &gt; 0
+        ORDER BY pcount DESC
+        LIMIT 30
+    </select>
+
+    <!-- risk_flags 为 text[]：壅水/漫流/泥石流/临河滑坡/低洼地/急弯/沟滩占地/束窄/改道 -->
+    <select id="selectRiskFlags" resultType="java.util.LinkedHashMap">
+        SELECT flag AS "风险隐患要素", COUNT(*) AS "防治对象数",
+               string_agg(fnm, '、' ORDER BY pcount DESC) AS "涉及对象"
+        FROM (SELECT fnm, pcount, UNNEST(risk_flags) AS flag
+              FROM sh_survey_object
+              WHERE wscd = #{wscd} AND risk_flags IS NOT NULL) t
+        GROUP BY 1
+        ORDER BY 2 DESC
+    </select>
+
+    <!-- 数值列为字符型：非纯数字安全转 NULL，避免整查询失败 -->
+    <select id="selectGullyOccupy" resultType="java.util.LinkedHashMap">
+        SELECT name AS "点位名称", stype AS "类型",
+               CASE WHEN width ~ '^[0-9]+([.][0-9]+)?$' THEN (width)::numeric ELSE NULL END AS "宽度m",
+               CASE WHEN deep ~ '^[0-9]+([.][0-9]+)?$' THEN (deep)::numeric ELSE NULL END AS "深度m",
+               dmform AS "断面形式",
+               CASE WHEN zsmj ~ '^[0-9]+([.][0-9]+)?$' THEN (zsmj)::numeric ELSE NULL END AS "占压面积"
+        FROM sh_survey_gully
+        WHERE wscd = #{wscd}
+        ORDER BY name
+        LIMIT 30
+    </select>
+
+    <select id="selectHazardStats" resultType="java.util.LinkedHashMap">
+        SELECT hz_type AS "隐患类型", COUNT(*) AS "处数"
+        FROM sh_map_hazard_point
+        WHERE wscd = #{wscd}
+        GROUP BY 1
+        ORDER BY 2 DESC
+    </select>
+
+    <select id="selectHazardPoints" resultType="java.util.LinkedHashMap">
+        SELECT name AS "隐患点名称", hz_type AS "隐患类型", fnm AS "关联防治对象"
+        FROM sh_map_hazard_point
+        WHERE wscd = #{wscd}
+        ORDER BY hz_type, name
+        LIMIT 30
+    </select>
+
+    <select id="selectBridgeHazards" resultType="java.util.LinkedHashMap">
+        SELECT h.pid AS "编码", h.name AS "名称", h.hz_type AS "隐患类型", h.fnm AS "关联防治对象"
+        FROM sh_map_hazard_point h
+        WHERE h.wscd = #{wscd}
+          AND (h.hz_type LIKE '%桥%' OR h.hz_type LIKE '%涵%')
+        ORDER BY h.name
+        LIMIT 20
+    </select>
+
+    <select id="selectRoadObstruction" resultType="java.util.LinkedHashMap">
+        SELECT name AS "名称", stype AS "类型",
+               CASE WHEN obstruction_area_ratio ~ '^[0-9]+([.][0-9]+)?$' THEN (obstruction_area_ratio)::numeric ELSE NULL END AS "阻水比R1",
+               backwater_objname AS "壅水影响对象", overflow_objname AS "漫流影响对象",
+               burst_objname AS "溃决影响对象"
+        FROM sh_survey_road
+        WHERE wscd = #{wscd}
+        ORDER BY 3 DESC NULLS LAST
+        LIMIT 30
+    </select>
+
+    <select id="selectPreventionAreas" resultType="java.util.LinkedHashMap">
+        SELECT obj_type AS "防护对象类型", COUNT(*) AS "处数", COALESCE(SUM(pcount),0) AS "人口"
+        FROM sh_map_prevention_area
+        WHERE wscd = #{wscd}
+        GROUP BY 1
+        ORDER BY 2 DESC
+    </select>
+
+    <!-- =============== 数据问答 =============== -->
+
+    <select id="selectBoundOverview" resultType="java.util.LinkedHashMap">
+        SELECT MAX(wsnm) AS "流域全称", MAX(alias_name) AS "流域别名", COUNT(*) AS "防治对象数",
+               COALESCE(SUM(pcount),0) AS "涉及人口",
+               SUM(CASE WHEN risk_flags IS NOT NULL AND array_length(risk_flags,1) &gt; 0 THEN 1 ELSE 0 END) AS "有风险隐患对象数"
+        FROM sh_survey_object
+        WHERE wscd = #{wscd}
+    </select>
+
+    <select id="selectGlobalOverview" resultType="java.util.LinkedHashMap">
+        SELECT (SELECT COUNT(*) FROM sh_map_watershed) AS "小流域数",
+               (SELECT COUNT(*) FROM sh_survey_object) AS "防治对象数",
+               (SELECT COUNT(DISTINCT NULLIF(wscd,'')) FROM sh_survey_object) AS "涉及流域数",
+               (SELECT COALESCE(SUM(pcount),0) FROM sh_survey_object) AS "涉及人口"
+    </select>
+
+    <!-- 阻水比 R1 分级：低≤10%、中10-30%、高>30%、极端>80% -->
+    <select id="selectRoadObstructionGrade" resultType="java.util.LinkedHashMap">
+        SELECT stype AS "类型", COUNT(*) AS "数量",
+               ROUND(AVG(r1),2) AS "平均R1", MAX(r1) AS "最大R1",
+               SUM(CASE WHEN r1 &lt;= 10 THEN 1 ELSE 0 END) AS "低阻水",
+               SUM(CASE WHEN r1 &gt; 10 AND r1 &lt;= 30 THEN 1 ELSE 0 END) AS "中阻水",
+               SUM(CASE WHEN r1 &gt; 30 THEN 1 ELSE 0 END) AS "高阻水",
+               SUM(CASE WHEN r1 &gt; 80 THEN 1 ELSE 0 END) AS "极端阻水"
+        FROM (SELECT stype,
+                     CASE WHEN obstruction_area_ratio ~ '^[0-9]+([.][0-9]+)?$'
+                          THEN (obstruction_area_ratio)::numeric ELSE NULL END AS r1
+              FROM sh_survey_road) t
+        GROUP BY stype
+    </select>
+
+    <select id="selectRoadObstructionHigh" resultType="java.util.LinkedHashMap">
+        SELECT name AS "名称", code AS "编码", stype AS "类型", obstruction_area_ratio AS "阻水比R1",
+               backwater_objname AS "壅水影响对象", overflow_objname AS "漫流影响对象"
+        FROM (SELECT name, code, stype, obstruction_area_ratio, backwater_objname, overflow_objname,
+                     CASE WHEN obstruction_area_ratio ~ '^[0-9]+([.][0-9]+)?$'
+                          THEN (obstruction_area_ratio)::numeric ELSE NULL END AS r1
+              FROM sh_survey_road) t
+        WHERE r1 &gt; 30
+        ORDER BY r1 DESC
+        LIMIT 20
+    </select>
+
+    <select id="selectGullyStats" resultType="java.util.LinkedHashMap">
+        SELECT COUNT(*) AS "占地点位数",
+               COALESCE(SUM(z),0) AS "总占压面积",
+               SUM(CASE WHEN z &gt; 70 THEN 1 ELSE 0 END) AS "严重占压数",
+               COALESCE(MAX(z),0) AS "最大占压面积"
+        FROM (SELECT CASE WHEN zsmj ~ '^[0-9]+([.][0-9]+)?$' THEN (zsmj)::numeric ELSE NULL END AS z
+              FROM sh_survey_gully) t
+    </select>
+
+    <select id="selectWatershedList" resultType="java.util.LinkedHashMap">
+        SELECT wsnm AS "流域全称", COALESCE(NULLIF(TRIM(alias_name),''), wsnm) AS "流域名称",
+               wscd AS "流域编码", river_name AS "所在水系", wsarea AS "流域面积km2",
+               village_count AS "防治村个数", gully_count AS "山洪沟道条数"
+        FROM sh_map_watershed
+        <where>
+            <if test="keyword != null and keyword != ''">
+                wsnm LIKE '%' || #{keyword} || '%' OR alias_name LIKE '%' || #{keyword} || '%' OR wscd = #{keyword}
+            </if>
+        </where>
+        ORDER BY wsnm
+        LIMIT 50
+    </select>
+
+    <!-- =============== 流域清单 / 检索 =============== -->
+
+    <select id="selectWatershedObjectCounts" resultType="java.util.LinkedHashMap">
+        SELECT w.wscd AS "wscd", COALESCE(NULLIF(TRIM(w.alias_name),''), w.wsnm) AS "wsnm",
+               COUNT(o.id) AS "对象数", COALESCE(SUM(o.pcount),0) AS "人口"
+        FROM sh_map_watershed w
+        LEFT JOIN sh_survey_object o ON o.wscd = w.wscd
+        GROUP BY w.wscd, 2
+        ORDER BY 3 DESC
+    </select>
+
+    <select id="selectWatershedByCode" resultType="java.util.LinkedHashMap">
+        SELECT wsnm, alias_name
+        FROM sh_map_watershed
+        WHERE wscd = #{wscd}
+        LIMIT 1
+    </select>
+
+    <select id="selectAllWatersheds" resultType="java.util.LinkedHashMap">
+        SELECT wscd, wsnm, alias_name
+        FROM sh_map_watershed
+    </select>
+
+    <select id="selectWatershedsOrdered" resultType="java.util.LinkedHashMap">
+        SELECT DISTINCT wscd, wsnm, alias_name
+        FROM sh_map_watershed
+        ORDER BY wsnm
+        LIMIT #{limit}
+    </select>
+
+    <!-- PostgreSQL 的 DISTINCT 不允许按 select 外的表达式排序，统一 GROUP BY 去重 -->
+    <sql id="wsGroupOrder">
+        GROUP BY wscd, wsnm, alias_name
+        ORDER BY CHAR_LENGTH(COALESCE(wsnm,'')) DESC
+        LIMIT 8
+    </sql>
+
+    <select id="selectWatershedsExact" resultType="java.util.LinkedHashMap">
+        SELECT wscd, wsnm, alias_name
+        FROM sh_map_watershed
+        WHERE wscd = #{key} OR wsnm = #{key} OR alias_name = #{key}
+        <include refid="wsGroupOrder"/>
+    </select>
+
+    <select id="selectWatershedsLike" resultType="java.util.LinkedHashMap">
+        SELECT wscd, wsnm, alias_name
+        FROM sh_map_watershed
+        WHERE wsnm LIKE #{fullKey} OR alias_name LIKE #{shortKey} OR wsnm LIKE #{shortKey}
+        <include refid="wsGroupOrder"/>
+    </select>
+
+    <select id="selectWatershedsContaining" resultType="java.util.LinkedHashMap">
+        SELECT wscd, wsnm, alias_name
+        FROM sh_map_watershed
+        WHERE COALESCE(wsnm,'') &lt;&gt; '' AND #{key} LIKE CONCAT('%', wsnm, '%')
+        <include refid="wsGroupOrder"/>
+    </select>
+
+    <select id="selectWatershedsByCodes" resultType="java.util.LinkedHashMap">
+        SELECT DISTINCT wscd, wsnm, alias_name
+        FROM sh_map_watershed
+        <where>
+            <if test="wscds != null and wscds.size() > 0">
+                wscd IN
+                <foreach collection="wscds" item="c" open="(" separator="," close=")">#{c}</foreach>
+            </if>
+        </where>
+        ORDER BY wscd
+    </select>
+
+</mapper>

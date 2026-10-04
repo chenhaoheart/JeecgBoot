@@ -405,7 +405,7 @@
         let flag = await createConfirmSync({
           title: toRelease ? '发布应用' : '取消发布',
           content: toRelease
-            ? '确定发布吗？发布后将生成分享链接（访客无需登录），且不允许再修改应用。'
+            ? '确定发布吗？发布后将生成分享链接（访客无需登录）。之后仍可在编排中修改模型、提示词等，保存后对访客即时生效。'
             : '确定取消发布吗？取消后分享链接将失效。',
           okText: '确定',
           cancelText: '取消',

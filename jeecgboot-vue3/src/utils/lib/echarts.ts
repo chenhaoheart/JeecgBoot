@@ -1,6 +1,6 @@
 import * as echarts from 'echarts/core';
 
-import { BarChart, LineChart, PieChart, MapChart, PictorialBarChart, RadarChart } from 'echarts/charts';
+import { BarChart, GraphChart, LineChart, PieChart, MapChart, PictorialBarChart, RadarChart } from 'echarts/charts';
 
 import {
   TitleComponent,
@@ -32,6 +32,7 @@ echarts.use([
   AriaComponent,
   ParallelComponent,
   BarChart,
+  GraphChart,
   LineChart,
   PieChart,
   MapChart,

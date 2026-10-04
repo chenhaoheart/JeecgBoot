@@ -58,33 +58,6 @@
           <presetQuestion @out-question="handleOutQuestion" :quickCommandData="quickCommandData"></presetQuestion>
         </div>
         <div class="bottomArea">
-          <a-popconfirm
-            placement="topLeft"
-            title="确认清除当前会话？"
-            ok-text="清除"
-            cancel-text="取消"
-            :overlayStyle="{ 'z-index': 9999 }"
-            @confirm="handleDelSession"
-          >
-          <a-button type="text" class="delBtn">
-            <svg
-              t="1706504908534"
-              class="icon"
-              viewBox="0 0 1024 1024"
-              version="1.1"
-              xmlns="http://www.w3.org/2000/svg"
-              p-id="1584"
-              width="18"
-              height="18"
-            >
-              <path
-                d="M816.872727 158.254545h-181.527272V139.636364c0-39.563636-30.254545-69.818182-69.818182-69.818182h-107.054546c-39.563636 0-69.818182 30.254545-69.818182 69.818182v18.618181H207.127273c-48.872727 0-90.763636 41.890909-90.763637 93.09091s41.890909 90.763636 90.763637 90.763636h609.745454c51.2 0 90.763636-41.890909 90.763637-90.763636 0-51.2-41.890909-93.090909-90.763637-93.09091zM435.2 139.636364c0-13.963636 9.309091-23.272727 23.272727-23.272728h107.054546c13.963636 0 23.272727 9.309091 23.272727 23.272728v18.618181h-153.6V139.636364z m381.672727 155.927272H207.127273c-25.6 0-44.218182-20.945455-44.218182-44.218181 0-25.6 20.945455-44.218182 44.218182-44.218182h609.745454c25.6 0 44.218182 20.945455 44.218182 44.218182 0 23.272727-20.945455 44.218182-44.218182 44.218181zM835.490909 407.272727h-121.018182c-13.963636 0-23.272727 9.309091-23.272727 23.272728s9.309091 23.272727 23.272727 23.272727h97.745455V837.818182c0 39.563636-30.254545 69.818182-69.818182 69.818182h-37.236364V602.763636c0-13.963636-9.309091-23.272727-23.272727-23.272727s-23.272727 9.309091-23.272727 23.272727V907.636364h-118.690909V602.763636c0-13.963636-9.309091-23.272727-23.272728-23.272727s-23.272727 9.309091-23.272727 23.272727V907.636364H372.363636V602.763636c0-13.963636-9.309091-23.272727-23.272727-23.272727s-23.272727 9.309091-23.272727 23.272727V907.636364h-34.909091c-39.563636 0-69.818182-30.254545-69.818182-69.818182V453.818182H558.545455c13.963636 0 23.272727-9.309091 23.272727-23.272727s-9.309091-23.272727-23.272727-23.272728H197.818182c-13.963636 0-23.272727 9.309091-23.272727 23.272728V837.818182c0 65.163636 51.2 116.363636 116.363636 116.363636h451.490909c65.163636 0 116.363636-51.2 116.363636-116.363636V430.545455c0-13.963636-11.636364-23.272727-23.272727-23.272728z"
-                fill="currentColor"
-                p-id="1585"
-              />
-            </svg>
-          </a-button>
-          </a-popconfirm>
           <a-button v-if="type === 'view'" type="text" class="contextBtn" :class="[usingContext && 'enabled']" @click="handleUsingContext">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -155,7 +128,7 @@
                   v-model:value="prompt"
                   :autoSize="{ minRows: 1, maxRows: 6 }"
                   :placeholder="placeholder"
-                  @press-enter="handleEnter"
+                  @keydown.enter.shift.prevent="handleSubmit"
                   @focus="textareaActive = true"
                   @blur="textareaActive = false"
                   autofocus
@@ -248,6 +221,54 @@
                   </a-tooltip>
                 </div>
                 <div class="right-actions">
+                <!-- Token 消耗统计入口：SSE MESSAGE_END 携带本轮用量，前端按会话累计 -->
+                <a-popover
+                  v-if="usageData.totalTokens > 0"
+                  trigger="click"
+                  placement="top"
+                  :arrow="{ pointAtCenter: true }"
+                  overlayClassName="ai-usage-popover"
+                >
+                  <template #content>
+                    <div class="usage-panel">
+                      <div class="usage-head">
+                        <span class="usage-title">Token 消耗统计</span>
+                        <span class="usage-sub">本会话累计</span>
+                      </div>
+                      <div class="usage-total">
+                        <span class="usage-total-num">{{ formatTokens(usageData.totalTokens) }}</span>
+                        <span class="usage-calls">{{ usageData.calls }} 次模型调用</span>
+                      </div>
+                      <div class="usage-bar">
+                        <span class="usage-bar-in" :style="{ width: usageInPercent + '%' }"></span>
+                      </div>
+                      <div class="usage-breakdown">
+                        <span class="dot in"></span>输入 {{ formatTokens(usageData.inputTokens) }}
+                        <span class="dot out"></span>输出 {{ formatTokens(usageData.outputTokens) }}
+                      </div>
+                      <div v-if="usageEstimated" class="usage-est">部分调用未返回用量，已按字符数估算</div>
+                    </div>
+                  </template>
+                  <a-button size="small" type="text" class="usage-chip">
+                    <Icon icon="ant-design:fund-outlined" style="margin-right:4px" />
+                    {{ formatTokens(usageData.totalTokens) }} tokens
+                  </a-button>
+                </a-popover>
+                <!-- 助手页、已发布问答页切换模型；编排弹窗左侧已有 AI 模型，预览区不再重复 -->
+                <a-select
+                  v-if="showModelSwitch"
+                  v-model:value="selectedModelId"
+                  size="small"
+                  class="model-switch-select"
+                  :placeholder="isDefaultAssistant ? '系统默认模型' : '应用配置模型'"
+                  allow-clear
+                  :loading="modelLoading"
+                  @change="handleModelChange"
+                >
+                  <a-select-option v-for="m in modelOptions" :key="m.id" :value="m.id" :label="m.name">
+                    {{ m.name }}<span class="model-provider-text">（{{ m.modelName || m.provider }}）</span>
+                  </a-select-option>
+                </a-select>
                 <a-button v-if="loading" type="primary" danger @click="handleStopChat" class="stopBtn">
                   <svg
                       t="1706148514627"
@@ -307,7 +328,7 @@
 
 <script setup lang="ts">
   import { Ref, watch } from 'vue';
-  import { computed, ref, onUnmounted, onMounted, nextTick } from 'vue';
+  import { computed, ref, onUnmounted, onMounted, nextTick, reactive } from 'vue';
   import { useScroll } from './js/useScroll';
   import chatMessage from './chatMessage.vue';
   import presetQuestion from './presetQuestion.vue';
@@ -342,6 +363,17 @@
   const chatData = ref<any>([]);
   //应用数据
   const appData = ref<any>({});
+  // 是否为系统默认助手页（/ai，未绑定具体AI应用）
+  const isDefaultAssistant = computed(() => props.type === 'view' && !appData.value?.id);
+  // 已发布/门户问答页：与助手页一样可选 agent 模型。编排预览不展示，避免和左侧「AI模型」重复
+  const isChatSimpleApp = computed(() => appData.value?.type === 'chatSimple');
+  const showModelSwitch = computed(() => isDefaultAssistant.value || (isChatSimpleApp.value && props.type === 'view'));
+  // 可切换的已激活语言模型列表
+  const modelOptions = ref<any[]>([]);
+  const modelLoading = ref<boolean>(false);
+  // 当前选中的模型ID（空=助手页走系统默认 / 应用页走应用配置），按应用分别持久化
+  const MODEL_CACHE_KEY = 'ai_chat_selected_model_id';
+  const selectedModelId = ref<string | undefined>(undefined);
   const usingContext = ref<any>(true);
   const uuid = ref<string>(props.uuid);
   const topicId = ref<string>('');
@@ -353,11 +385,56 @@
     if(getIsMobile.value){
       return '来说点什么吧...'
     } else {
-      return '来说点什么吧...（Shift + Enter = 换行）';
+      return '来说点什么吧...（Shift + Enter 发送，Enter 换行）';
     }
   });
   //token
   const headers = getHeaders();
+  // 会话级 token 用量统计：后端 MESSAGE_END 携带本轮用量，前端累计展示
+  const usageData = reactive({ calls: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0 });
+  const usageConvId = ref<string>('');
+  const usageEstimated = ref<boolean>(false);
+  const usageInPercent = computed(() => {
+    const total = usageData.totalTokens || 0;
+    if (total <= 0) return 0;
+    return Math.round((usageData.inputTokens / total) * 100);
+  });
+  function resetUsage(convId: string) {
+    usageConvId.value = convId || '';
+    usageData.calls = 0;
+    usageData.inputTokens = 0;
+    usageData.outputTokens = 0;
+    usageData.totalTokens = 0;
+    usageEstimated.value = false;
+  }
+  function recordUsage(u) {
+    if (!u || !(u.totalTokens > 0)) return;
+    if (usageConvId.value !== uuid.value) {
+      resetUsage(uuid.value);
+    }
+    usageData.calls += 1;
+    usageData.inputTokens += u.inputTokens || 0;
+    usageData.outputTokens += u.outputTokens || 0;
+    usageData.totalTokens += u.totalTokens || 0;
+    usageEstimated.value = usageEstimated.value || !!u.estimated;
+  }
+  /** 1 万以上按「万」展示 */
+  function formatTokens(n?: number) {
+    const v = n || 0;
+    if (v >= 10000) {
+      return (v / 10000).toFixed(1) + '万';
+    }
+    return v.toLocaleString();
+  }
+  // 切换会话时用量重新累计
+  watch(
+    () => uuid.value,
+    (nv) => {
+      if (usageConvId.value !== nv) {
+        resetUsage(nv);
+      }
+    }
+  );
   //文本域点击事件
   const textareaActive = ref<boolean>(false);
 
@@ -407,12 +484,6 @@
   // 当前正在调用的工具
   const currentToolTag = ref<string>('');
 
-  function handleEnter(event: KeyboardEvent) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      handleSubmit();
-    }
-  }
   function handleSubmit() {
     let userMessage = prompt.value;
     if (!userMessage || userMessage.trim() === '') return;
@@ -424,7 +495,7 @@
   };
   async function onConversation(userMessage) {
     if(!props.type && props.type != 'view'){
-      if(appData.value.type && appData.value.type == 'chatSimple' && !appData.value.modelId) {
+      if(appData.value.type && appData.value.type == 'chatSimple' && !appData.value.modelId && !selectedModelId.value) {
         messageTip("请选择AI模型");
         return;
       }
@@ -551,29 +622,6 @@
    * 清空会话
    * @param id
    */
-  function handleDelSession (){
-    try {
-      //update-begin---author:wangshuai---date:2025-12-12---for:【QQYUN-14127】【AI】AI应用门户---
-      let url = '/airag/chat/messages/clear/' + uuid.value;
-      if(props.sessionType){
-        url += "/" + props.sessionType;
-      }
-      defHttp.get({
-        url: url,
-      //update-end---author:wangshuai---date:2025-12-12---for:【QQYUN-14127】【AI】AI应用门户---
-      },{ isTransformResponse: false }).then((res) => {
-        if(res.success){
-          chatData.value = [];
-          topicId.value = "";
-          if(props.prologue){
-            topChat(props.prologue);
-          }
-        }
-      })
-    } catch {
-      return console.log('Oops errors!');
-    }
-  };
 
   // 停止响应
   const handleStop = () => {
@@ -634,6 +682,8 @@
         // 添加绘画参数
         enableDraw: enableDraw.value,
         drawModelId: enableDraw.value ? drawModelId.value : '',
+        // 助手页 / chatSimple 应用：透传页面选中的模型；未选则后端走默认或应用配置
+        modelId: showModelSwitch.value ? selectedModelId.value || '' : '',
         // 添加消息类型 portal 门户
         sessionType: props.sessionType || ''
       };
@@ -656,6 +706,8 @@
         // 添加绘画参数
         enableDraw: enableDraw.value,
         drawModelId: enableDraw.value ? drawModelId.value : '',
+        // 助手页 / chatSimple 应用：透传页面选中的模型；未选则后端走默认或应用配置
+        modelId: showModelSwitch.value ? selectedModelId.value || '' : '',
         // 添加消息类型 portal 门户
         sessionType: props.sessionType || ''
       };
@@ -826,6 +878,8 @@
       topicId.value = item.topicId;
       conversationId = item.conversationId;
       uuid.value = item.conversationId;
+      //记录本轮 token 用量（后端在 MESSAGE_END 携带）
+      recordUsage(item.data);
       localStorage.removeItem('chat_requestId_' + uuid.value);
       handleStop();
     }
@@ -1253,6 +1307,10 @@
           appData.value = val;
           // 检查模型是否支持网络搜索
           checkModelProvider();
+          if (showModelSwitch.value) {
+            initSelectedModel();
+            loadModelOptions();
+          }
         }
       } catch (e) {}
     },
@@ -1262,6 +1320,57 @@
   // 编辑对话设置
   function handleEditSettings() {
     emit('edit-settings');
+  }
+
+  function resolveModelCacheKey() {
+    const id = appData.value?.id;
+    return id ? `${MODEL_CACHE_KEY}_${id}` : MODEL_CACHE_KEY;
+  }
+
+  /** 优先读本应用缓存，否则回落到应用配置模型 */
+  function initSelectedModel() {
+    const cached = localStorage.getItem(resolveModelCacheKey());
+    if (cached) {
+      selectedModelId.value = cached;
+      return;
+    }
+    if (appData.value?.modelId) {
+      selectedModelId.value = appData.value.modelId;
+      return;
+    }
+    selectedModelId.value = undefined;
+  }
+
+  /**
+   * 加载已激活的语言模型（助手页 / chatSimple 应用模型切换下拉）
+   */
+  async function loadModelOptions() {
+    modelLoading.value = true;
+    try {
+      const list = await defHttp.get({ url: '/sh/report/agent/models' });
+      modelOptions.value = Array.isArray(list) ? list : [];
+      // 本地缓存的模型已被删除或未激活时清空选择
+      if (selectedModelId.value && !modelOptions.value.some((m) => m.id === selectedModelId.value)) {
+        selectedModelId.value = undefined;
+        localStorage.removeItem(resolveModelCacheKey());
+      }
+    } catch (e) {
+      modelOptions.value = [];
+    } finally {
+      modelLoading.value = false;
+    }
+  }
+
+  /**
+   * 切换模型后本地持久化（空=助手页恢复系统默认 / 应用页恢复应用配置）
+   */
+  function handleModelChange(val) {
+    const key = resolveModelCacheKey();
+    if (val) {
+      localStorage.setItem(key, val);
+    } else {
+      localStorage.removeItem(key);
+    }
   }
 
   // 切换网络搜索
@@ -1415,6 +1524,11 @@
     fileList.value = [];
     // 检查模型是否支持网络搜索
     checkModelProvider();
+    // 助手页 / chatSimple 应用加载可切换的已激活语言模型
+    if (showModelSwitch.value) {
+      initSelectedModel();
+      loadModelOptions();
+    }
   });
 </script>
 
@@ -1492,17 +1606,13 @@
         padding-top: 6px;
         padding-bottom: 6px;
       }
-      .contextBtn,
-      .delBtn {
+      .contextBtn {
         padding: 0;
         width: 40px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-      }
-      .delBtn {
-        margin-right: 8px;
       }
       .contextBtn {
         color: #a8071a;
@@ -1736,10 +1846,61 @@
           align-items: center;
           gap: 4px;
         }
+        .model-switch-select {
+          min-width: 96px;
+          max-width: 240px;
+          :deep(.ant-select-selector) {
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            border-radius: 6px;
+            padding: 0 22px 0 8px;
+            height: 24px;
+            color: #8a909c;
+            font-size: 12px;
+            transition: background-color 0.2s, color 0.2s;
+          }
+          :deep(.ant-select-selection-item),
+          :deep(.ant-select-selection-placeholder) {
+            color: #8a909c;
+            font-size: 12px;
+            line-height: 24px;
+          }
+          :deep(.ant-select-arrow) {
+            color: #a8adb8;
+            font-size: 10px;
+          }
+          &:hover :deep(.ant-select-selector) {
+            background: #f2f3f7 !important;
+            color: #4b5563;
+          }
+          &.ant-select-focused :deep(.ant-select-selector) {
+            background: #f2f3f7 !important;
+          }
+          .model-provider-text {
+            color: #999;
+            font-size: 12px;
+          }
+        }
         .right-actions {
           display: flex;
           align-items: center;
           gap: 4px;
+        }
+        .usage-chip {
+          color: #8a909c;
+          font-size: 12px;
+          padding: 0 8px;
+          height: 24px;
+          border-radius: 6px;
+          display: inline-flex;
+          align-items: center;
+          transition: color 0.2s, background-color 0.2s;
+
+          &:hover {
+            color: #06f;
+            background: #f2f3f7;
+          }
         }
         .sendBtn {
           width: auto;
@@ -1783,11 +1944,6 @@
     //手机下的样式 平板不需要调整
     .footer{
       padding: 0;
-      .bottomArea{
-        .delBtn{
-          margin-right: 0;
-        }
-      }
     }
     .chatWrap{
       padding: 10px 10px 10px 0;
@@ -1808,5 +1964,90 @@
  }
  .chat-upload-dropdown .ant-dropdown-menu-item:hover{
    background-color: #f0f6ff;
+ }
+
+ /* Token 消耗统计弹层（popover 渲染在组件外，必须用非 scoped 全局样式） */
+ .ai-usage-popover {
+   .usage-panel {
+     min-width: 240px;
+     font-size: 12px;
+
+     .usage-head {
+       display: flex;
+       align-items: baseline;
+       justify-content: space-between;
+       margin-bottom: 8px;
+
+       .usage-title {
+         font-size: 13px;
+         font-weight: 600;
+         color: rgba(0, 0, 0, 0.88);
+       }
+
+       .usage-sub {
+         color: #98a2b3;
+         font-size: 11px;
+       }
+     }
+
+     .usage-total {
+       display: flex;
+       align-items: baseline;
+       gap: 8px;
+
+       .usage-total-num {
+         font-size: 22px;
+         font-weight: 600;
+         color: #1890ff;
+       }
+
+       .usage-calls {
+         color: #98a2b3;
+       }
+     }
+
+     .usage-bar {
+       display: flex;
+       height: 6px;
+       border-radius: 3px;
+       overflow: hidden;
+       background: #52c41a33;
+       margin: 8px 0 4px;
+
+       .usage-bar-in {
+         background: #1890ff;
+         transition: width 0.3s;
+       }
+     }
+
+     .usage-breakdown {
+       display: flex;
+       align-items: center;
+       gap: 4px;
+       color: #667085;
+
+       .dot {
+         width: 6px;
+         height: 6px;
+         border-radius: 50%;
+         display: inline-block;
+
+         &.in {
+           background: #1890ff;
+           margin-left: 8px;
+         }
+
+         &.out {
+           background: #52c41a;
+         }
+       }
+     }
+
+     .usage-est {
+       margin-top: 6px;
+       color: #d46b08;
+       font-size: 11px;
+     }
+   }
  }
 </style>
