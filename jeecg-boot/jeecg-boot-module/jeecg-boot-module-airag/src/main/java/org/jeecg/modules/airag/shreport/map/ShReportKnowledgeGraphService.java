@@ -43,6 +43,9 @@ public class ShReportKnowledgeGraphService {
     @Autowired
     private ShReportPgQueryService pgQueryService;
 
+    @Autowired
+    private ShReportKgRelationService kgRelationService;
+
     public Map<String, Object> graph(String wscd, String q, Integer year) {
         String code = blank(wscd);
         String keyword = blank(q);
@@ -64,7 +67,154 @@ public class ShReportKnowledgeGraphService {
         }
         out.put("watersheds", watershedOptions());
         out.put("years", yearOptions());
+        applyStore(out, year);
         return out;
+    }
+
+    /** 关系库已初始化时，停用的边不再画出，手工关系补到当前图上。 */
+    @SuppressWarnings("unchecked")
+    private void applyStore(Map<String, Object> out, Integer year) {
+        try {
+            if (!kgRelationService.available()) {
+                out.put("relationReady", false);
+                return;
+            }
+            boolean inited = kgRelationService.initialized();
+            out.put("relationReady", inited);
+            String mode = str(out.get("mode"));
+            if ("overview".equals(mode) && inited) {
+                adjustOverview(out, year);
+            } else if ("focus".equals(mode)) {
+                adjustFocus(out, year);
+            }
+            if (inited) {
+                out.put("hint", str(out.get("hint")) + "关系库已接入。");
+            }
+        } catch (Exception e) {
+            log.warn("知识图谱关系库叠加失败: {}", e.getMessage());
+            out.put("relationReady", false);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void adjustOverview(Map<String, Object> out, Integer year) {
+        List<Map<String, Object>> stats = kgRelationService.overviewStats(year);
+        if (stats.isEmpty()) {
+            return;
+        }
+        Map<String, long[]> byKey = new LinkedHashMap<>();
+        for (Map<String, Object> s : stats) {
+            byKey.put(str(s.get("srcCat")) + "\0" + str(s.get("label")) + "\0" + str(s.get("tgtCat")),
+                    new long[]{asLong(s.get("enabled")), asLong(s.get("all"))});
+        }
+        List<Map<String, Object>> links = (List<Map<String, Object>>) out.get("links");
+        List<Map<String, Object>> next = new ArrayList<>();
+        Set<String> have = new LinkedHashSet<>();
+        for (Map<String, Object> link : links) {
+            String src = str(link.get("source"));
+            String tgt = str(link.get("target"));
+            if (!src.startsWith("type:") || !tgt.startsWith("type:")) {
+                next.add(link);
+                continue;
+            }
+            String key = src.substring(5) + "\0" + str(link.get("label")) + "\0" + tgt.substring(5);
+            have.add(key);
+            long[] st = byKey.get(key);
+            if (st == null || st[1] <= 0) {
+                next.add(link);
+                continue;
+            }
+            if (st[0] <= 0) {
+                continue;
+            }
+            link.put("count", st[0]);
+            next.add(link);
+        }
+        for (Map<String, Object> s : stats) {
+            if (asLong(s.get("enabled")) <= 0) {
+                continue;
+            }
+            String key = str(s.get("srcCat")) + "\0" + str(s.get("label")) + "\0" + str(s.get("tgtCat"));
+            if (!have.add(key)) {
+                continue;
+            }
+            Map<String, Object> link = new LinkedHashMap<>();
+            link.put("source", "type:" + s.get("srcCat"));
+            link.put("target", "type:" + s.get("tgtCat"));
+            link.put("label", s.get("label"));
+            link.put("count", asLong(s.get("enabled")));
+            next.add(link);
+        }
+        out.put("links", next);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void adjustFocus(Map<String, Object> out, Integer year) {
+        String code = blank(str(out.get("wscd")));
+        if (code == null) {
+            return;
+        }
+        List<Map<String, Object>> blocked = kgRelationService.edges(code, year, 0, null);
+        List<Map<String, Object>> manuals = kgRelationService.edges(code, year, 1, "manual");
+        if (blocked.isEmpty() && manuals.isEmpty()) {
+            return;
+        }
+        Set<String> block = new LinkedHashSet<>();
+        for (Map<String, Object> row : blocked) {
+            block.add(edgeKey(str(row.get("srcId")), str(row.get("tgtId")), str(row.get("label"))));
+        }
+        List<Map<String, Object>> links = (List<Map<String, Object>>) out.get("links");
+        if (!block.isEmpty()) {
+            links.removeIf(l -> block.contains(edgeKey(str(l.get("source")), str(l.get("target")), str(l.get("label")))));
+        }
+        if (manuals.isEmpty()) {
+            return;
+        }
+        List<Map<String, Object>> nodeList = (List<Map<String, Object>>) out.get("nodes");
+        Map<String, Map<String, Object>> nodes = new LinkedHashMap<>();
+        for (Map<String, Object> n : nodeList) {
+            nodes.put(str(n.get("id")), n);
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        for (Map<String, Object> l : links) {
+            seen.add(edgeKey(str(l.get("source")), str(l.get("target")), str(l.get("label"))));
+        }
+        for (Map<String, Object> row : manuals) {
+            String src = str(row.get("srcId"));
+            String tgt = str(row.get("tgtId"));
+            String label = str(row.get("label"));
+            if (!seen.add(edgeKey(src, tgt, label))) {
+                continue;
+            }
+            ensureStoredNode(nodes, src, str(row.get("srcName")), str(row.get("srcCat")), code);
+            ensureStoredNode(nodes, tgt, str(row.get("tgtName")), str(row.get("tgtCat")), code);
+            if (nodes.containsKey(src) && nodes.containsKey(tgt)) {
+                link(links, new LinkedHashSet<>(), src, tgt, label, null);
+            }
+        }
+        out.put("nodes", new ArrayList<>(nodes.values()));
+    }
+
+    private void ensureStoredNode(Map<String, Map<String, Object>> nodes, String id, String name, String catKey, String wscd) {
+        if (id.isBlank() || nodes.containsKey(id)) {
+            return;
+        }
+        try {
+            entity(nodes, id, name, cat(catKey), null, null, null, null, wscd, null);
+        } catch (IllegalArgumentException ignored) {
+            // 未知类别不补节点
+        }
+    }
+
+    private static String edgeKey(String source, String target, String label) {
+        return source + "\0" + target + "\0" + label;
+    }
+
+    private static long asLong(Object v) {
+        if (v instanceof Number n) {
+            return n.longValue();
+        }
+        return 0L;
     }
 
     private Map<String, Object> overview(Integer year) {

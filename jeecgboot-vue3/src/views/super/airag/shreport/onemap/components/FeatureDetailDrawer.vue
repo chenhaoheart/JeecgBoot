@@ -22,7 +22,7 @@
           <ShSectionTitle>
             AI识别风险隐患
             <a-button v-if="!presetText" type="primary" size="small" :loading="aiLoading" @click="runAiRisk">开始识别</a-button>
-            <a-button v-if="!presetText" type="link" size="small" @click="openLedger">识别台账</a-button>
+            <a-button v-if="!presetText" type="link" size="small" @click="openLedger">AI隐患分析</a-button>
           </ShSectionTitle>
           <div class="ai-risk-hint">
             {{
@@ -265,7 +265,7 @@
   }
 
   function openLedger() {
-    router.push('/super/airag/shreport/ShHazardAiRiskLog');
+    router.push({ path: '/super/airag/shreport/ShMapDataAdmin', query: { view: 'aiRisk' } });
   }
 
   function onDrawerClose() {

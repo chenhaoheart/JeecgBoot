@@ -78,7 +78,7 @@ export function typeColor(layer: 'prevention' | 'hazard' | 'section', type: stri
   return map[type] || fallback;
 }
 
-export const DEFAULT_TIANDITU_KEY = '';
+export const DEFAULT_TIANDITU_KEY = 'fced2cd1905b5b42d4167603c6ba32e2';
 
 export const TIANDITU_LAYERS: Record<string, { name: string; base: string; label: string }> = {
   img: {

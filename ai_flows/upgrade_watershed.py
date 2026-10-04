@@ -101,19 +101,41 @@ FB = "## 【系统默认内容】模型未配置或调用失败\n\n请配置大�
 cfg = CH1 = dict(
     name="山洪报告_01流域概况",
     descr="按流域编码过滤防治对象数据，AI生成《流域概况》章节",
-    start_ip=[{"field": "wsmc", "name": "沟道名称(可选)", "type": "string", "required": False}],
+    start_ip=[
+        {"field": "wsmc", "name": "沟道名称(可选)", "type": "string", "required": False},
+        {"field": "sjbao", "name": "实测数据包", "type": "string", "required": False},
+        {"field": "tigang", "name": "写作提纲", "type": "string", "required": False},
+    ],
     sqls=[
         ("流域基本统计", """SELECT COUNT(*) AS "防治对象总数", COALESCE(SUM(pcount),0) AS "总人口", COUNT(DISTINCT NULLIF(TRIM(town_name),'')) AS "乡镇数", COUNT(DISTINCT NULLIF(TRIM(rvnm),'')) AS "涉及河流数" FROM sh_survey_object WHERE wscd='{{lybm}}'"""),
         ("对象类型统计", """SELECT COALESCE(NULLIF(TRIM(ftp),''),'未分类') AS "类型", COUNT(*) AS "数量", COALESCE(SUM(pcount),0) AS "人口" FROM sh_survey_object WHERE wscd='{{lybm}}' GROUP BY 1 ORDER BY 2 DESC"""),
         ("乡镇分布", """SELECT COALESCE(MAX(county_name),'') AS "县区", COALESCE(NULLIF(TRIM(town_name),''),'未知') AS "乡镇", COUNT(*) AS "对象数", COALESCE(SUM(pcount),0) AS "人口" FROM sh_survey_object WHERE wscd='{{lybm}}' GROUP BY 2 ORDER BY 4 DESC LIMIT 15"""),
     ],
-    user=("请撰写流域《{{流域名称}}》山洪灾害风险隐患调查评价报告的章节《一、流域概况》：该流域防治对象总量与人口分布概述、"
-          "乡镇与河流分布特征、防治对象类型构成分析。以 Markdown 表格嵌入 表1-1 流域基本统计表、表1-2 对象类型统计表、"
-          "表1-3 乡镇分布表（数据与给定完全一致）。\n\n"
-          "【流域基本统计】{{流域基本统计}}\n\n【对象类型统计】{{对象类型统计}}\n\n【乡镇分布】{{乡镇分布}}\n\n"
+    user=("请撰写流域《{{流域名称}}》山洪灾害风险隐患调查评价报告的章节《一、流域概况》。"
+          "章标题写「# 一、流域概况」。本章必须写成下面三节，不能只写防治对象统计。"
+          "没有给出的数字一律写「暂无调查数据」，不得编造。\n\n"
+          "## 1.1 自然地理概况\n"
+          "写本流域位置、所在水系、集水面积、周长、坡度、沟口高程、最高点高程、山洪沟道条数、集镇个数、防治村个数。"
+          "这些数字只采用【实测数据包】里「流域基本信息」的对应列；数据包没有的气候、土壤质地、土地利用与植被，"
+          "各用一句话写「暂无调查数据」。不要写「见图」，不要编造支流名录。\n\n"
+          "## 1.2 社会经济\n"
+          "写涉及县区、乡镇，以及防治对象数量、受威胁人口、类型构成。"
+          "县区和乡镇用【乡镇分布】，数量和人口用【流域基本统计】【对象类型统计】。"
+          "数据包没有的产值、产业、学校、医院，写「暂无调查数据」。\n\n"
+          "## 1.3 山洪灾害防御情况\n"
+          "根据防治对象与人口分布，概括本流域受山洪威胁的对象和防御重点。"
+          "没有监测预警设施、避险场所、预案等调查数据时写「暂无调查数据」。\n\n"
+          "用 Markdown 表格嵌入表1-1 流域基本统计表、表1-2 对象类型统计表、表1-3 乡镇分布表，"
+          "单元格与给定数据完全一致；某一来源为空就不要输出空表。\n\n"
+          "【实测数据包】\n{{实测数据包}}\n\n"
+          "【流域基本统计】\n{{流域基本统计}}\n\n"
+          "【对象类型统计】\n{{对象类型统计}}\n\n"
+          "【乡镇分布】\n{{乡镇分布}}\n\n"
+          "【写作提纲】\n{{写作提纲}}\n\n"
           "用户补充资料：{{补充资料}}"),
     llm_ips=[("流域基本统计", "sql1"), ("对象类型统计", "sql2"), ("乡镇分布", "sql3")],
-    fb=FB + "\n\n一、流域概况（应包含：防治对象总量与人口、乡镇与河流分布、类型构成分析及表1-1~1-3）",
+    llm_extra=[("sjbao", "实测数据包"), ("tigang", "写作提纲")],
+    fb=FB + "\n\n# 一、流域概况\n\n## 1.1 自然地理概况\n\n暂无调查数据。\n\n## 1.2 社会经济\n\n暂无调查数据。\n\n## 1.3 山洪灾害防御情况\n\n暂无调查数据。",
 )
 nodes = [node("start-node", "start", 200, 450, "开始", ip=base_inputs(cfg["start_ip"]))]
 for i, (text, q) in enumerate(cfg["sqls"], 1):
@@ -122,7 +144,7 @@ nodes.append(node("llm1", "llm", 1200, 450, "LLM撰写",
                   options={"model": {"modeId": VOLC_ID, "modelId": VOLC_ID, "params": {"model": VOLC_MODEL, "temperature": 0.3, "timeout": 120}},
                            "history": 0,
                            "messages": [{"role": "system", "content": cfg.get("system", SYS)}, {"role": "user", "content": cfg["user"]}]},
-                  ip=llm_inputs(cfg["llm_ips"]), op=[{"field": "text", "name": "章节内容", "type": "string"}]))
+                  ip=llm_inputs(cfg["llm_ips"], cfg.get("llm_extra", [])), op=[{"field": "text", "name": "章节内容", "type": "string"}]))
 nodes += end_nodes(cfg["fb"])
 types = {n["id"]: n["type"] for n in nodes}
 head = ["start.tag('start-node')"] + [f"sql.tag('sql{i}')" for i in range(1, len(cfg["sqls"]) + 1)]

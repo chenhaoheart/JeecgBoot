@@ -7,6 +7,9 @@
         <div class="ds-item" :class="{ active: view === 'graph' }" @click="switchToGraph">
           <span class="ds-name">山洪知识图谱</span>
         </div>
+        <div class="ds-item" :class="{ active: view === 'kgRel' }" @click="switchToKgRel">
+          <span class="ds-name">关系初始化</span>
+        </div>
       </div>
       <div v-for="g in sideGroups" :key="g.title" class="side-group">
         <div class="side-group-title">{{ g.title }}</div>
@@ -27,10 +30,21 @@
           </div>
         </template>
       </div>
+      <div class="side-group">
+        <div class="ds-item" :class="{ active: view === 'aiRisk' }" @click="switchToAiRisk">
+          <span class="ds-name">AI隐患分析</span>
+        </div>
+      </div>
     </aside>
 
     <div v-show="view === 'graph'" class="kg-host">
-      <ShKnowledgeGraph :active="view === 'graph'" :revision="kgRevision" @edit="onGraphEdit" @maintain="onGraphMaintain" />
+      <ShKnowledgeGraph
+        :active="view === 'graph'"
+        :revision="kgRevision"
+        @edit="onGraphEdit"
+        @maintain="onGraphMaintain"
+        @manage="switchToKgRel"
+      />
     </div>
 
     <a-card v-if="view === 'table'" :bordered="false" class="mapdata-card">
@@ -131,6 +145,15 @@
     <!-- 文件管理（照片/视频索引） -->
     <a-card v-if="view === 'files'" :bordered="false" class="mapdata-card">
       <ShFilePanel />
+    </a-card>
+
+    <a-card v-if="view === 'kgRel'" :bordered="false" class="mapdata-card">
+      <ShKgRelationAdmin @changed="onKgRelChanged" />
+    </a-card>
+
+    <!-- AI隐患分析：原隐患识别台账 -->
+    <a-card v-if="view === 'aiRisk'" :bordered="false" class="mapdata-card">
+      <ShHazardAiRiskLog embedded />
     </a-card>
 
     <!-- 编辑弹窗 -->
@@ -243,7 +266,8 @@
 </template>
 
 <script lang="ts" setup>
-  import { computed, onMounted, reactive, ref } from 'vue';
+  import { computed, onMounted, reactive, ref, watch } from 'vue';
+  import { useRoute } from 'vue-router';
   import { Modal } from 'ant-design-vue';
   import { DeleteOutlined, UploadOutlined } from '@ant-design/icons-vue';
   import { message } from 'ant-design-vue';
@@ -269,15 +293,19 @@
   import ShSurveyDetail from './ShSurveyDetail.vue';
   import ShSectionTitle from './ShSectionTitle.vue';
   import ShKnowledgeGraph from './ShKnowledgeGraph.vue';
+  import ShKgRelationAdmin from './ShKgRelationAdmin.vue';
+  import ShHazardAiRiskLog from './ShHazardAiRiskLog.vue';
 
   defineOptions({ name: 'ShMapDataAdmin' });
+
+  const route = useRoute();
 
   const datasets = ref<IDataset[]>([]);
   const currentDs = ref('');
   const activeDataset = computed(() => datasets.value.find((d) => d.key === currentDs.value));
 
-  /** 右侧视图：知识图谱 / 数据表格 / 文件管理 */
-  const view = ref<'graph' | 'table' | 'files'>('graph');
+  /** 右侧视图：知识图谱 / 关系初始化 / 数据表格 / 文件管理 / AI隐患分析 */
+  const view = ref<'graph' | 'kgRel' | 'table' | 'files' | 'aiRisk'>('graph');
   /** 图谱里改完一条数据后递增，通知图谱重新取数 */
   const kgRevision = ref(0);
 
@@ -517,8 +545,20 @@
     view.value = 'graph';
   }
 
+  function switchToKgRel() {
+    view.value = 'kgRel';
+  }
+
+  function onKgRelChanged() {
+    kgRevision.value += 1;
+  }
+
   function switchToFiles() {
     view.value = 'files';
+  }
+
+  function switchToAiRisk() {
+    view.value = 'aiRisk';
   }
 
   async function onGraphEdit(payload: { ds: string; rowId: number }) {
@@ -753,6 +793,16 @@
       importing.value = false;
     }
   }
+
+  watch(
+    () => route.query.view,
+    (v) => {
+      if (v === 'aiRisk') {
+        view.value = 'aiRisk';
+      }
+    },
+    { immediate: true }
+  );
 
   onMounted(loadDatasets);
 </script>

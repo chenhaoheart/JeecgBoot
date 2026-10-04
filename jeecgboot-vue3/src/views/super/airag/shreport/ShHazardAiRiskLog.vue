@@ -1,9 +1,9 @@
 <template>
-  <PageWrapper content-full-height>
-    <div class="log-page">
+  <component :is="shell" v-bind="shellBind">
+    <div class="log-page" :class="{ 'is-embedded': embedded }">
       <div class="log-head">
         <div>
-          <div class="log-title">隐患识别台账</div>
+          <div class="log-title">AI隐患分析</div>
           <div class="log-sub">记录每次在一张图隐患点上发起的 AI 风险识别，结果不回写调查数据。系统提示词在「AI提示词」里维护，名称为「山洪隐患点风险识别」，保存后下一次识别即生效。</div>
         </div>
         <div class="log-filters">
@@ -52,7 +52,7 @@
       :preset-text="presetText"
       :preset-meta="presetMeta"
     />
-  </PageWrapper>
+  </component>
 </template>
 
 <script lang="ts" setup>
@@ -63,6 +63,11 @@
   import { getAiRiskLog, IAiRiskLogRow, listAiRiskLogs } from './ShHazardAiRiskLog.api';
 
   defineOptions({ name: 'super-airag-shreport-ShHazardAiRiskLog' });
+
+  const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false });
+  const embedded = computed(() => props.embedded);
+  const shell = computed(() => (props.embedded ? 'div' : PageWrapper));
+  const shellBind = computed(() => (props.embedded ? {} : { contentFullHeight: true }));
 
   const columns = [
     { title: '时间', dataIndex: 'create_time', width: 170 },
@@ -149,6 +154,12 @@
     background: #fff;
     padding: 16px;
     min-height: 100%;
+
+    &.is-embedded {
+      background: transparent;
+      padding: 0;
+      min-height: 0;
+    }
   }
 
   .log-head {

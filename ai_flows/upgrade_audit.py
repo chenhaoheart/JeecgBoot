@@ -59,9 +59,8 @@ def chain(ids_normal, fb_id):
 # 每章默认内容（模型不可用时的系统默认文案）
 DEFAULTS = {
  1: ("## 【系统默认内容】模型未配置或调用失败，以下为本章节系统默认框架\n\n"
-     "一、流域概况\n\n本章依据小流域基本信息系统计数据编写，应包含：小流域数量与分布概述、地形地貌与沟道特征、"
-     "防治对象类型与人口分布分析。请配置大模型后重新生成本章节，以获取基于调查数据的完整内容（含表1-1小流域基本信息表、"
-     "表1-2防治对象类型统计表、表1-3县区防治对象分布表）。"),
+     "# 一、流域概况\n\n## 1.1 自然地理概况\n\n暂无调查数据。\n\n## 1.2 社会经济\n\n暂无调查数据。\n\n"
+     "## 1.3 山洪灾害防御情况\n\n暂无调查数据。\n\n请配置大模型后重新生成本章节。"),
  2: ("## 【系统默认内容】模型未配置或调用失败\n\n二、前期准备\n\n本章应包含：内业排查工作组织与技术路线、"
      "风险隐患要素排查情况统计、主要隐患类型特征（含表2-1风险隐患要素内业排查清单）。请配置大模型后重新生成本章节。"),
  3: ("## 【系统默认内容】模型未配置或调用失败\n\n三、外业调查成果\n\n本章应包含：涉水工程（跨沟道路、桥涵、坝）调查成果"
@@ -81,14 +80,37 @@ conn = pymysql.connect(host="127.0.0.1", user="root", password="123456", databas
 cur = conn.cursor()
 
 CH = {
- 1: dict(name="山洪报告_01流域概况", start_ip=[{"field": "wsmc", "name": "流域名称", "type": "string", "required": False}],
-         sqls=[("小流域基本信息", "SELECT name AS 流域名称, hecd AS 流域编码, channel AS 所在沟道, address AS 所在位置, baseele AS 沟口高程, baselgtd AS 经度, baselttd AS 纬度 FROM ia_m_hsurface ORDER BY name"),
-               ("防治对象类型统计", "SELECT ftp AS 类型, COUNT(*) AS 数量, SUM(pcount) AS 人口 FROM prevention_object GROUP BY ftp"),
-               ("县区防治对象分布", "SELECT county_name AS 县区, COUNT(*) AS 防治对象数, SUM(pcount) AS 人口 FROM prevention_object GROUP BY county_name ORDER BY 防治对象数 DESC")],
-         user=("请撰写报告章节《一、流域概况》：小流域数量与分布概述、地形地貌与沟道特征（利用高程数据）、防治对象类型与人口分布分析；"
-               "以 Markdown 表格嵌入 表1-1 小流域基本信息表、表1-2 防治对象类型统计表、表1-3 县区防治对象分布表（数据与给定一致）。\n\n"
-               "【小流域基本信息】{{流域基本信息}}\n\n【防治对象类型统计】{{防治对象类型统计}}\n\n【县区防治对象分布】{{县区防治对象分布}}\n\n用户补充资料：{{补充资料}}"),
-         llm_ips=[("流域基本信息", "sql1"), ("防治对象类型统计", "sql2"), ("县区防治对象分布", "sql3")]),
+ 1: dict(name="山洪报告_01流域概况", start_ip=[
+             {"field": "wsmc", "name": "流域名称", "type": "string", "required": False},
+             {"field": "sjbao", "name": "实测数据包", "type": "string", "required": False},
+             {"field": "tigang", "name": "写作提纲", "type": "string", "required": False}],
+         sqls=[("流域基本统计", "SELECT name AS 流域名称, hecd AS 流域编码, channel AS 所在沟道, address AS 所在位置, baseele AS 沟口高程, baselgtd AS 经度, baselttd AS 纬度 FROM ia_m_hsurface ORDER BY name"),
+               ("对象类型统计", "SELECT ftp AS 类型, COUNT(*) AS 数量, SUM(pcount) AS 人口 FROM prevention_object GROUP BY ftp"),
+               ("乡镇分布", "SELECT county_name AS 县区, COUNT(*) AS 防治对象数, SUM(pcount) AS 人口 FROM prevention_object GROUP BY county_name ORDER BY 防治对象数 DESC")],
+         user=("请撰写流域《{{流域名称}}》山洪灾害风险隐患调查评价报告的章节《一、流域概况》。"
+               "章标题写「# 一、流域概况」。本章必须写成下面三节，不能只写防治对象统计。"
+               "没有给出的数字一律写「暂无调查数据」，不得编造。\n\n"
+               "## 1.1 自然地理概况\n"
+               "写本流域位置、所在水系、集水面积、周长、坡度、沟口高程、最高点高程、山洪沟道条数、集镇个数、防治村个数。"
+               "这些数字只采用【实测数据包】里「流域基本信息」的对应列；数据包没有的气候、土壤质地、土地利用与植被，"
+               "各用一句话写「暂无调查数据」。不要写「见图」，不要编造支流名录。\n\n"
+               "## 1.2 社会经济\n"
+               "写涉及县区、乡镇，以及防治对象数量、受威胁人口、类型构成。"
+               "县区和乡镇用【乡镇分布】，数量和人口用【流域基本统计】【对象类型统计】。"
+               "数据包没有的产值、产业、学校、医院，写「暂无调查数据」。\n\n"
+               "## 1.3 山洪灾害防御情况\n"
+               "根据防治对象与人口分布，概括本流域受山洪威胁的对象和防御重点。"
+               "没有监测预警设施、避险场所、预案等调查数据时写「暂无调查数据」。\n\n"
+               "用 Markdown 表格嵌入表1-1 流域基本统计表、表1-2 对象类型统计表、表1-3 乡镇分布表，"
+               "单元格与给定数据完全一致；某一来源为空就不要输出空表。\n\n"
+               "【实测数据包】\n{{实测数据包}}\n\n"
+               "【流域基本统计】\n{{流域基本统计}}\n\n"
+               "【对象类型统计】\n{{对象类型统计}}\n\n"
+               "【乡镇分布】\n{{乡镇分布}}\n\n"
+               "【写作提纲】\n{{写作提纲}}\n\n"
+               "用户补充资料：{{补充资料}}"),
+         llm_ips=[("流域基本统计", "sql1"), ("对象类型统计", "sql2"), ("乡镇分布", "sql3")],
+         llm_extra=[("wsmc", "流域名称"), ("sjbao", "实测数据包"), ("tigang", "写作提纲")]),
  2: dict(name="山洪报告_02前期准备", start_ip=[],
          sqls=[("风险隐患排查清单", "SELECT county_name AS 县区, town_name AS 乡镇, fnm AS 防治对象, ftp AS 类型, pcount AS 人口, rvnm AS 所在河流, risk_backwater AS 壅水, risk_overflow AS 漫流, risk_debris_flow AS 泥石流, risk_landslide AS 滑坡, comments AS 隐患描述 FROM prevention_object WHERE risk_backwater='是' OR risk_overflow='是' OR risk_debris_flow='是' OR risk_landslide='是' ORDER BY county_name, town_name LIMIT 100")],
          user=("请撰写报告章节《二、前期准备》：内业排查工作组织与技术路线概述、风险隐患要素排查情况统计（按乡镇分布分析）、主要隐患类型特征；"
@@ -181,6 +203,8 @@ def build_chapter(no):
         llm_ip = [{"field": "lishijilv", "name": "历史灾害记录", "nodeId": "start-node", "type": "string"},
                   {"field": "honghen", "name": "洪痕入户调查", "nodeId": "start-node", "type": "string"},
                   {"field": "buochong", "name": "补充资料", "nodeId": "start-node", "type": "string"}]
+    for field, name in cfg.get("llm_extra", []):
+        llm_ip.append({"field": field, "name": name, "nodeId": "start-node", "type": "string"})
     lx = 1200
     nodes.append(node("llm1", "llm", lx, 450, "LLM撰写",
                       options={"model": {"modeId": "2099900548148649986", "modelId": "2099900548148649986",

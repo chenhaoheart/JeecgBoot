@@ -10,7 +10,7 @@ import java.util.List;
 
 /**
  * 章节写作：Graph 的 write 节点调用此处，统一走 AI 流程设计里的单章流程
- * （数据包/提纲/补充资料/知识库范文由流程入参注入，见 ShReportGenerateService#buildChapterFlowInput）。
+ * （数据包/提纲/补充资料由流程入参注入，见 ShReportGenerateService#buildChapterFlowInput；知识库范文不注入生成）。
  * 流程返回占位时原样上抛，由 persist 节点按占位/阻断落「失败」状态。
  */
 @Slf4j

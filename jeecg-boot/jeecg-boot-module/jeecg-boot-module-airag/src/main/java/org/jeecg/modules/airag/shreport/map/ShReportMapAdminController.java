@@ -36,6 +36,9 @@ public class ShReportMapAdminController {
     @Autowired
     private ShReportKnowledgeGraphService knowledgeGraphService;
 
+    @Autowired
+    private ShReportKgRelationService kgRelationService;
+
     @Operation(summary = "数据集清单（含列配置，供动态表格与导入模板）")
     @GetMapping("/datasets")
     public Result<List<Map<String, Object>>> datasets() {
@@ -74,6 +77,95 @@ public class ShReportMapAdminController {
         } catch (Exception e) {
             log.error("山洪知识图谱查询失败", e);
             return Result.error("知识图谱查询失败：" + e.getMessage());
+        }
+    }
+
+    @Operation(summary = "知识图谱关系库：是否已初始化、各类关系条数")
+    @GetMapping("/kg/rel/status")
+    public Result<Map<String, Object>> relationStatus() {
+        try {
+            return Result.OK(kgRelationService.status());
+        } catch (Exception e) {
+            log.error("知识图谱关系库状态失败", e);
+            return Result.error("关系库状态读取失败：" + e.getMessage());
+        }
+    }
+
+    @Operation(summary = "知识图谱关系库分页")
+    @GetMapping("/kg/rel/list")
+    public Result<Map<String, Object>> relationList(@RequestParam(required = false) String relKey,
+                                                    @RequestParam(required = false) String srcCat,
+                                                    @RequestParam(required = false) String tgtCat,
+                                                    @RequestParam(required = false) String origin,
+                                                    @RequestParam(required = false) Integer enabled,
+                                                    @RequestParam(required = false) String q,
+                                                    @RequestParam(defaultValue = "1") int pageNo,
+                                                    @RequestParam(defaultValue = "20") int pageSize) {
+        try {
+            return Result.OK(kgRelationService.list(relKey, srcCat, tgtCat, origin, enabled, q, pageNo, pageSize));
+        } catch (Exception e) {
+            log.error("知识图谱关系库查询失败", e);
+            return Result.error("关系查询失败：" + e.getMessage());
+        }
+    }
+
+    @Operation(summary = "从业务数据初始化知识图谱关系，重新执行时保留手工关系和已停用状态")
+    @PostMapping("/kg/rel/init")
+    public Result<Map<String, Object>> relationInit() {
+        try {
+            return Result.OK(kgRelationService.initialize());
+        } catch (Exception e) {
+            log.error("知识图谱关系初始化失败", e);
+            return Result.error("初始化失败：" + e.getMessage());
+        }
+    }
+
+    @Operation(summary = "手工添加一条知识图谱关系")
+    @PostMapping("/kg/rel/save")
+    public Result<?> relationSave(@RequestBody JSONObject body) {
+        try {
+            return Result.OK(kgRelationService.saveManual(body));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("知识图谱关系保存失败", e);
+            return Result.error("保存失败：" + e.getMessage());
+        }
+    }
+
+    @Operation(summary = "停用或启用一条知识图谱关系")
+    @PostMapping("/kg/rel/enabled")
+    public Result<String> relationEnabled(@RequestBody JSONObject body) {
+        try {
+            Long id = body.getLong("id");
+            if (id == null) {
+                return Result.error("id 不能为空");
+            }
+            kgRelationService.setEnabled(id, Boolean.TRUE.equals(body.getBoolean("enabled")));
+            return Result.OK("ok");
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("知识图谱关系启停失败", e);
+            return Result.error("保存失败：" + e.getMessage());
+        }
+    }
+
+    @Operation(summary = "删除一条知识图谱关系")
+    @PostMapping("/kg/rel/delete")
+    public Result<String> relationDelete(@RequestBody JSONObject body) {
+        try {
+            Long id = body.getLong("id");
+            if (id == null) {
+                return Result.error("id 不能为空");
+            }
+            kgRelationService.delete(id);
+            return Result.OK("ok");
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("知识图谱关系删除失败", e);
+            return Result.error("删除失败：" + e.getMessage());
         }
     }
 

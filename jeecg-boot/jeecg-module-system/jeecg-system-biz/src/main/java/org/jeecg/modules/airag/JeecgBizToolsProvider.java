@@ -3,6 +3,7 @@ package org.jeecg.modules.airag;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -16,7 +17,13 @@ import org.jeecg.common.system.util.JwtUtil;
 import org.jeecg.common.util.PasswordUtil;
 import org.jeecg.common.util.SpringContextUtils;
 import org.jeecg.common.util.oConvertUtils;
+import org.jeecg.modules.airag.llm.consts.LLMConsts;
+import org.jeecg.modules.airag.llm.entity.AiragKnowledge;
+import org.jeecg.modules.airag.llm.entity.AiragKnowledgeDoc;
+import org.jeecg.modules.airag.llm.handler.EmbeddingHandler;
 import org.jeecg.modules.airag.llm.handler.JeecgToolsProvider;
+import org.jeecg.modules.airag.llm.service.IAiragKnowledgeDocService;
+import org.jeecg.modules.airag.llm.service.IAiragKnowledgeService;
 import org.jeecg.modules.base.service.BaseCommonService;
 import org.jeecg.modules.system.entity.SysRole;
 import org.jeecg.modules.system.entity.SysUser;
@@ -51,8 +58,17 @@ public class JeecgBizToolsProvider implements JeecgToolsProvider {
     @Autowired
     private org.jeecg.modules.system.service.ISysUserService sysUserService;
 
+    @Autowired
+    private IAiragKnowledgeService airagKnowledgeService;
+
+    @Autowired
+    private IAiragKnowledgeDocService airagKnowledgeDocService;
+
+    @Autowired
+    private EmbeddingHandler embeddingHandler;
+
     public Map<ToolSpecification, ToolExecutor> getDefaultTools() {
-       log.info("--------【AI工具】创建用户和查询用户工具扩展------------------");
+       log.info("--------【AI工具】创建用户、角色和知识库工具扩展------------------");
         Map<ToolSpecification, ToolExecutor> tools = new HashMap<>();
 
         // 改为从当前 HTTP 请求的 JWT 解析用户名，再按 userId 查权限码集合用于鉴权。
@@ -93,6 +109,15 @@ public class JeecgBizToolsProvider implements JeecgToolsProvider {
             tools.put(grantRoles.getToolSpecification(), grantRoles.getToolExecutor());
         } else {
             log.info("【AI工具】当前用户无 system:user:addUserRole 权限，跳过 grant_user_roles 工具注册");
+        }
+
+        if (perms.contains("airag:knowledge:list")) {
+            JeecgLlmTools listKnowledge = listKnowledgeTool(perms);
+            tools.put(listKnowledge.getToolSpecification(), listKnowledge.getToolExecutor());
+            JeecgLlmTools queryKnowledge = queryKnowledgeTool(perms);
+            tools.put(queryKnowledge.getToolSpecification(), queryKnowledge.getToolExecutor());
+        } else {
+            log.info("【AI工具】当前用户无 airag:knowledge:list 权限，跳过知识库工具注册");
         }
 
         return tools;
@@ -379,5 +404,203 @@ public class JeecgBizToolsProvider implements JeecgToolsProvider {
             return String.format("授予完成：新增%d，已存在%d，无效/失败%d", added, existed, invalid);
         };
         return new JeecgLlmTools(spec, exec);
+    }
+
+    /**
+     * 列出知识库及其文档标题。
+     */
+    private JeecgLlmTools listKnowledgeTool(Set<String> perms) {
+        ToolSpecification spec = ToolSpecification.builder()
+                .name("list_knowledge")
+                .description("列出知识库及其中的文档标题。用户询问有哪些知识库、知识库里有什么、列出知识库内容时必须调用本工具，禁止编造。"
+                        + "可按名称模糊筛选；不填名称则列出全部知识库（不含记忆库）。"
+                        + "返回知识库 id、名称、描述、状态、文档数量和文档标题。正文片段请改用 query_knowledge。")
+                .parameters(
+                        JsonObjectSchema.builder()
+                                .addStringProperty("name", "知识库名称，可选，模糊匹配")
+                                .build()
+                )
+                .build();
+        final boolean allowed = perms != null && perms.contains("airag:knowledge:list");
+        ToolExecutor exec = (toolExecutionRequest, memoryId) -> {
+            if (!allowed) {
+                return "无权限：您没有查询知识库的权限（airag:knowledge:list）";
+            }
+            try {
+                JSONObject args = JSONObject.parseObject(toolExecutionRequest.arguments());
+                String name = args == null ? null : args.getString("name");
+                List<AiragKnowledge> knowledges = findKnowledges(name, false);
+                if (knowledges.isEmpty()) {
+                    return StringUtils.isBlank(name) ? "当前没有可用的知识库。" : "未找到名称包含「" + name.trim() + "」的知识库。";
+                }
+                JSONArray arr = new JSONArray();
+                for (AiragKnowledge knowledge : knowledges) {
+                    JSONObject item = new JSONObject();
+                    item.put("id", knowledge.getId());
+                    item.put("name", knowledge.getName());
+                    item.put("descr", knowledge.getDescr());
+                    item.put("status", knowledge.getStatus());
+                    List<String> titles = listDocTitles(knowledge.getId(), 20);
+                    long docCount = airagKnowledgeDocService.count(new LambdaQueryWrapper<AiragKnowledgeDoc>()
+                            .eq(AiragKnowledgeDoc::getKnowledgeId, knowledge.getId()));
+                    item.put("docCount", docCount);
+                    item.put("documents", titles);
+                    if (docCount > titles.size()) {
+                        item.put("documentsTruncated", true);
+                    }
+                    arr.add(item);
+                }
+                return arr.toJSONString();
+            } catch (Exception e) {
+                log.warn("【AI工具】list_knowledge 失败: {}", e.getMessage());
+                return "列出知识库失败：" + e.getMessage();
+            }
+        };
+        return new JeecgLlmTools(spec, exec);
+    }
+
+    /**
+     * 按问题检索知识库正文片段。
+     */
+    private JeecgLlmTools queryKnowledgeTool(Set<String> perms) {
+        ToolSpecification spec = ToolSpecification.builder()
+                .name("query_knowledge")
+                .description("在知识库中按问题检索正文片段。用户询问知识库里的具体内容、事实、报告细节时必须调用本工具，并只依据返回片段回答，禁止编造。"
+                        + "queryText 必填；knowledgeName 可选，不填则在已启用的知识库中检索（不含记忆库）。"
+                        + "若只要知识库或文档清单，请改用 list_knowledge。")
+                .parameters(
+                        JsonObjectSchema.builder()
+                                .addStringProperty("queryText", "要检索的问题或关键词，必填")
+                                .addStringProperty("knowledgeName", "知识库名称，可选，模糊匹配")
+                                .addStringProperty("topNumber", "返回条数，可选，默认5，最大8")
+                                .required("queryText")
+                                .build()
+                )
+                .build();
+        final boolean allowed = perms != null && perms.contains("airag:knowledge:list");
+        ToolExecutor exec = (toolExecutionRequest, memoryId) -> {
+            if (!allowed) {
+                return "无权限：您没有查询知识库的权限（airag:knowledge:list）";
+            }
+            try {
+                JSONObject args = JSONObject.parseObject(toolExecutionRequest.arguments());
+                String queryText = args == null ? null : args.getString("queryText");
+                if (StringUtils.isBlank(queryText)) {
+                    return "参数缺失：queryText";
+                }
+                String knowledgeName = args.getString("knowledgeName");
+                int topNumber = 5;
+                if (StringUtils.isNotBlank(args.getString("topNumber"))) {
+                    try {
+                        topNumber = Integer.parseInt(args.getString("topNumber").trim());
+                    } catch (NumberFormatException ignored) {
+                        topNumber = 5;
+                    }
+                }
+                if (topNumber < 1) {
+                    topNumber = 1;
+                }
+                if (topNumber > 8) {
+                    topNumber = 8;
+                }
+                List<AiragKnowledge> knowledges = findKnowledges(knowledgeName, true);
+                if (knowledges.isEmpty()) {
+                    return StringUtils.isBlank(knowledgeName)
+                            ? "没有已启用的知识库可检索。"
+                            : "未找到名称包含「" + knowledgeName.trim() + "」的已启用知识库。";
+                }
+                boolean limited = knowledges.size() > 8;
+                if (limited) {
+                    knowledges = knowledges.subList(0, 8);
+                }
+                List<Map<String, Object>> hits = new ArrayList<>();
+                List<String> errors = new ArrayList<>();
+                for (AiragKnowledge knowledge : knowledges) {
+                    try {
+                        List<Map<String, Object>> part = embeddingHandler.searchEmbedding(knowledge.getId(), queryText.trim(), topNumber, null);
+                        if (part == null) {
+                            continue;
+                        }
+                        for (Map<String, Object> hit : part) {
+                            Map<String, Object> row = new HashMap<>();
+                            row.put("knowledgeName", knowledge.getName());
+                            row.put("docName", hit.get(EmbeddingHandler.EMBED_STORE_METADATA_DOCNAME));
+                            row.put("score", hit.get("score"));
+                            String content = oConvertUtils.getString(hit.get("content"), "");
+                            if (content.length() > 800) {
+                                content = content.substring(0, 800) + "...";
+                            }
+                            row.put("content", content);
+                            hits.add(row);
+                        }
+                    } catch (Exception ex) {
+                        log.warn("【AI工具】query_knowledge 检索失败 knowId={}: {}", knowledge.getId(), ex.getMessage());
+                        errors.add(knowledge.getName() + "：" + ex.getMessage());
+                    }
+                }
+                hits.sort((a, b) -> Double.compare(scoreOf(b), scoreOf(a)));
+                if (hits.size() > topNumber) {
+                    hits = hits.subList(0, topNumber);
+                }
+                JSONObject out = new JSONObject();
+                out.put("hits", hits);
+                if (hits.isEmpty()) {
+                    out.put("message", "未检索到相关片段。");
+                }
+                if (limited) {
+                    out.put("notice", "知识库超过8个，仅检索了最近的8个。请用 knowledgeName 指定知识库。");
+                }
+                if (!errors.isEmpty() && hits.isEmpty()) {
+                    out.put("errors", errors);
+                }
+                return out.toJSONString();
+            } catch (Exception e) {
+                log.warn("【AI工具】query_knowledge 失败: {}", e.getMessage());
+                return "检索知识库失败：" + e.getMessage();
+            }
+        };
+        return new JeecgLlmTools(spec, exec);
+    }
+
+    private List<AiragKnowledge> findKnowledges(String name, boolean enabledOnly) {
+        LambdaQueryWrapper<AiragKnowledge> qw = new LambdaQueryWrapper<>();
+        qw.and(w -> w.ne(AiragKnowledge::getType, LLMConsts.KNOWLEDGE_TYPE_MEMORY).or().isNull(AiragKnowledge::getType));
+        if (enabledOnly) {
+            qw.eq(AiragKnowledge::getStatus, LLMConsts.STATUS_ENABLE);
+        }
+        if (StringUtils.isNotBlank(name)) {
+            qw.like(AiragKnowledge::getName, name.trim());
+        }
+        qw.orderByDesc(AiragKnowledge::getCreateTime);
+        qw.last("LIMIT 30");
+        List<AiragKnowledge> list = airagKnowledgeService.list(qw);
+        return list == null ? Collections.emptyList() : list;
+    }
+
+    private List<String> listDocTitles(String knowledgeId, int limit) {
+        LambdaQueryWrapper<AiragKnowledgeDoc> qw = new LambdaQueryWrapper<>();
+        qw.select(AiragKnowledgeDoc::getTitle);
+        qw.eq(AiragKnowledgeDoc::getKnowledgeId, knowledgeId);
+        qw.orderByDesc(AiragKnowledgeDoc::getCreateTime);
+        qw.last("LIMIT " + limit);
+        List<AiragKnowledgeDoc> docs = airagKnowledgeDocService.list(qw);
+        List<String> titles = new ArrayList<>();
+        if (docs == null) {
+            return titles;
+        }
+        for (AiragKnowledgeDoc doc : docs) {
+            if (doc != null && StringUtils.isNotBlank(doc.getTitle())) {
+                titles.add(doc.getTitle());
+            }
+        }
+        return titles;
+    }
+
+    private static double scoreOf(Map<String, Object> hit) {
+        Object score = hit.get("score");
+        if (score instanceof Number number) {
+            return number.doubleValue();
+        }
+        return 0D;
     }
 }

@@ -140,23 +140,24 @@ spring:
           slow-sql-millis: 5000
       datasource:
         master:
-          url: jdbc:mysql://jeecg-boot-mysql:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+          # 本机 MySQL。容器内 127.0.0.1 指向容器自己，必须走 host.docker.internal
+          url: jdbc:mysql://host.docker.internal:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
           username: root
-          password: root
+          password: 123456
           driver-class-name: com.mysql.cj.jdbc.Driver
-          # 多数据源配置
-          #multi-datasource1:
-          #url: jdbc:mysql://localhost:3306/jeecg-boot2?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&transformedBitIsBoolean=true&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
-          #username: root
-          #password: root
-          #driver-class-name: com.mysql.cj.jdbc.Driver
-  #redis 配置
+        # 本机山洪一张图 PostgreSQL（shreport_map）。向量库 pgvector 仍用容器 jeecg-boot-pgvector
+        shreport:
+          url: jdbc:postgresql://host.docker.internal:5432/shreport_map
+          username: postgres
+          password: '123456'
+          driver-class-name: org.postgresql.Driver
+  #redis 配置（本机 Redis）
   data:
     redis:
       database: 0
-      host: jeecg-boot-redis
+      host: host.docker.internal
       port: 6379
-      password:
+      password: 123456
 #mybatis plus 设置
 mybatis-plus:
   mapper-locations: classpath*:org/jeecg/**/xml/*Mapper.xml
@@ -240,7 +241,7 @@ jeecg:
       apiKey: sk-??
       apiHost: https://dashscope.aliyuncs.com/api/v1/services/
       timeout: 60
-  # AIRag向量库
+  # AIRag向量库（仍使用已在运行的 pgvector 容器，Docker 网络内端口是 5432）
   ai-rag:
     embed-store:
       host: jeecg-boot-pgvector
@@ -333,8 +334,8 @@ jeecg:
     logRetentionDays: 30
   #分布式锁配置
   redisson:
-    address: jeecg-boot-redis:6379
-    password:
+    address: host.docker.internal:6379
+    password: 123456
     type: STANDALONE
     enabled: true
   # 百度开放API配置
@@ -386,3 +387,11 @@ justauth:
     type: default
     prefix: 'demo::'
     timeout: 1h
+
+# 明确指定 liteflow 读本机 MySQL，避免误选一张图 PostgreSQL 数据源
+liteflow:
+  rule-source-ext-data-map:
+    url: jdbc:mysql://host.docker.internal:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+    driverClassName: com.mysql.cj.jdbc.Driver

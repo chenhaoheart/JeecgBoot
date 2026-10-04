@@ -20,4 +20,26 @@ export const AI_ROUTE: AppRouteRecordRaw = {
   ],
 };
 
-export const staticRoutesList = [AI_ROUTE];
+/** 菜单「隐患识别台账」已改到 AI 概览，明细页仍保留给概览里的入口 */
+export const HAZARD_LOG_ROUTE: AppRouteRecordRaw = {
+  path: '',
+  name: 'hazard-ai-log-parent',
+  component: LAYOUT,
+  meta: {
+    title: '隐患识别明细',
+    hideMenu: true,
+  },
+  children: [
+    {
+      path: '/sh/hazard-ai-log',
+      name: 'hazard-ai-log',
+      component: () => import('/@/views/super/airag/shreport/ShHazardAiRiskLog.vue'),
+      meta: {
+        title: '隐患识别明细',
+        hideMenu: true,
+      },
+    },
+  ],
+};
+
+export const staticRoutesList = [AI_ROUTE, HAZARD_LOG_ROUTE];

@@ -168,6 +168,83 @@ export interface IKgGraph {
 export const getRow = (ds: string, id: number) =>
   defHttp.get<Recordable>({ url: '/sh/report/map/admin/row', params: { ds, id } });
 
+export interface IKgRelRule {
+  token: string;
+  key: string;
+  label: string;
+  srcCat: string;
+  tgtCat: string;
+  srcCatName: string;
+  tgtCatName: string;
+  srcHint: string;
+  tgtHint: string;
+  blurb: string;
+  count: number;
+}
+
+export interface IKgRelStatus {
+  initialized: boolean;
+  initTime?: string | null;
+  message?: string | null;
+  total: number;
+  derived: number;
+  manual: number;
+  disabled: number;
+  rules: IKgRelRule[];
+  ok?: boolean;
+  errors?: string[];
+}
+
+export interface IKgRelRow {
+  id: number;
+  relKey: string;
+  relLabel: string;
+  srcCat: string;
+  srcCatName: string;
+  srcId: string;
+  srcName: string;
+  tgtCat: string;
+  tgtCatName: string;
+  tgtId: string;
+  tgtName: string;
+  wscd?: string | null;
+  surveyYear?: number | null;
+  origin: 'init' | 'manual' | string;
+  enabled: boolean;
+  updateTime?: string | null;
+}
+
+export const getKgRelStatus = () =>
+  defHttp.get<IKgRelStatus>({ url: '/sh/report/map/admin/kg/rel/status' }, { errorMessageMode: 'none' });
+
+export const getKgRelList = (params: {
+  relKey?: string;
+  srcCat?: string;
+  tgtCat?: string;
+  origin?: string;
+  enabled?: number;
+  q?: string;
+  pageNo: number;
+  pageSize: number;
+}) =>
+  defHttp.get<{ total: number; pageNo: number; pageSize: number; data: IKgRelRow[] }>(
+    { url: '/sh/report/map/admin/kg/rel/list', params },
+    { errorMessageMode: 'none' }
+  );
+
+/** 从业务数据整理关系。派生关系会重建，已停用的保持停用，手工关系保留。 */
+export const initKgRelations = () =>
+  defHttp.post<IKgRelStatus>({ url: '/sh/report/map/admin/kg/rel/init', timeout: 3 * 60 * 1000 }, { successMessageMode: 'none' });
+
+export const saveKgRelation = (data: Recordable) =>
+  defHttp.post({ url: '/sh/report/map/admin/kg/rel/save', params: data }, { successMessageMode: 'none' });
+
+export const setKgRelationEnabled = (id: number, enabled: boolean) =>
+  defHttp.post({ url: '/sh/report/map/admin/kg/rel/enabled', params: { id, enabled } }, { successMessageMode: 'none' });
+
+export const deleteKgRelation = (id: number) =>
+  defHttp.post({ url: '/sh/report/map/admin/kg/rel/delete', params: { id } }, { successMessageMode: 'none' });
+
 /** Excel 导入（按调查年份入库；mode=append 追加 / replace 覆盖该年份） */
 export const importExcel = (params: { ds: string; year: number; mode: string; file: File }) => {
   const { ds, year, mode, file } = params;

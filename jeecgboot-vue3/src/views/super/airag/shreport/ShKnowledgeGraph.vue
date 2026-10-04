@@ -34,6 +34,7 @@
           allowClear
           @search="load"
         />
+        <a-button size="small" @click="emit('manage')">关系维护</a-button>
         <a-button size="small" :loading="loading" @click="load">刷新</a-button>
       </div>
     </div>
@@ -108,6 +109,7 @@
   const emit = defineEmits<{
     (e: 'edit', payload: { ds: string; rowId: number }): void;
     (e: 'maintain', payload: { ds: string; wscd?: string; search?: string }): void;
+    (e: 'manage'): void;
   }>();
 
   const COLORS: Record<string, string> = {

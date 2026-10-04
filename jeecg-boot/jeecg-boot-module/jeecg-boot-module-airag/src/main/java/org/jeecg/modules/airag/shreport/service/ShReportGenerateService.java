@@ -101,9 +101,6 @@ public class ShReportGenerateService {
     @Autowired
     private ShReportConstants.ShReportDataPacketService dataPacketService;
 
-    @Autowired(required = false)
-    private ShReportKnowledgeService knowledgeService;
-
     @Autowired
     private ShReportModelVariantService modelVariantService;
 
@@ -673,7 +670,7 @@ public class ShReportGenerateService {
         return "【系统默认内容】本章生成失败（模型未配置或调用异常）。请确认已配置可用的大模型 API Key 后重新生成本章节。";
     }
 
-    /** 组装单章流程入参：数据包、提纲、补充资料（用户要求 + 第4章计算参数 + 知识库范文 + 上一稿） */
+    /** 组装单章流程入参：数据包、提纲、补充资料（用户要求 + 第4章计算参数 + 上一稿）。不注入知识库范文。 */
     private Map<String, Object> buildChapterFlowInput(String batchNo, String lybm, String lymc, int chapterNo,
                                                       String requirement, String outline, FlowWriteContext ctx) {
         Map<String, Object> input = new HashMap<>();
@@ -688,13 +685,9 @@ public class ShReportGenerateService {
         if (chapterOutline != null && !chapterOutline.isEmpty()) {
             input.put("tigang", chapterOutline);
         }
-        ShReportKnowledgeService.KbResult examples = null;
-        if (knowledgeService != null) {
-            examples = knowledgeService.writingExamplesResult(chapterNo, lymc);
-        }
-        String buochong = buildBuochong(chapterNo, requirement,
+        String buochong = buildBuochong(requirement,
                 chapterNo == 4 ? dataPacketService.ch4ParamsText() : null,
-                examples, ctx.kbSourcesOut, ctx.prevDraft);
+                ctx.prevDraft);
         if (buochong != null) {
             input.put("buochong", buochong);
         }
@@ -711,12 +704,10 @@ public class ShReportGenerateService {
     }
 
     /**
-     * 组装「补充资料」入参：用户要求 + 第4章计算参数 + 知识库范文 + 上一稿（修订重写）。
-     * 全部为空时返回 null（流程入参保持缺省，与旧流程提示词兼容）。
+     * 组装「补充资料」入参：用户要求 + 第4章计算参数 + 上一稿（修订重写）。
+     * 知识库范文不在生成时注入，只在对话里问写法时检索。全部为空时返回 null。
      */
-    static String buildBuochong(int chapterNo, String requirement, String ch4Params,
-                                ShReportKnowledgeService.KbResult examples, List<String> kbSourcesOut,
-                                String prevDraft) {
+    static String buildBuochong(String requirement, String ch4Params, String prevDraft) {
         StringBuilder sb = new StringBuilder();
         String req = sanitizeRequirement(requirement);
         if (req != null && !req.isEmpty()) {
@@ -727,17 +718,6 @@ public class ShReportGenerateService {
                 sb.append('\n');
             }
             sb.append(ch4Params);
-        }
-        if (examples != null && !examples.isEmpty()) {
-            if (sb.length() > 0) {
-                sb.append("\n\n");
-            }
-            sb.append(examples.getContext());
-            if (kbSourcesOut != null && examples.getSources() != null) {
-                for (Map<String, Object> s : examples.getSources()) {
-                    kbSourcesOut.add(String.valueOf(s.get("docName")));
-                }
-            }
         }
         if (prevDraft != null && !prevDraft.isBlank()) {
             if (sb.length() > 0) {

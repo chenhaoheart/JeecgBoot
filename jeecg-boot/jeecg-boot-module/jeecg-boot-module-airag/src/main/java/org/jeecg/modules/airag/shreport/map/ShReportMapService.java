@@ -68,7 +68,7 @@ public class ShReportMapService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @Value("${shreport.map.tianditu-key:}")
+    @Value("${shreport.map.tianditu-key:fced2cd1905b5b42d4167603c6ba32e2}")
     private String tiandituKey;
 
     @Value("${shreport.map.center-lat:35.6}")
