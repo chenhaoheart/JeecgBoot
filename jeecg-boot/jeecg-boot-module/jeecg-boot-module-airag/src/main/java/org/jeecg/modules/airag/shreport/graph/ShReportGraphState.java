@@ -1,7 +1,7 @@
 package org.jeecg.modules.airag.shreport.graph;
 
 import org.bsc.langgraph4j.state.AgentState;
-import org.jeecg.modules.airag.shreport.ShReportQcIssue;
+import org.jeecg.modules.airag.shreport.entity.ShReportQcIssue;
 
 import java.util.ArrayList;
 import java.util.Collection;

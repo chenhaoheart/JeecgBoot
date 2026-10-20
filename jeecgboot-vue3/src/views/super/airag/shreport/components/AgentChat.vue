@@ -71,6 +71,9 @@
     </div>
 
     <div class="composer">
+      <div v-if="attachChips.length" class="attach-chips">
+        <a-tag v-for="c in attachChips" :key="c" closable @close="detachChip(c)">{{ c }}</a-tag>
+      </div>
       <a-textarea
         v-model:value="inputText"
         :bordered="false"
@@ -142,6 +145,13 @@
             </span>
           </a-tooltip>
         </div>
+        <a-tooltip :title="boundWatershed?.lybm ? '上传流域资料' : '请先绑定流域后再上传资料'">
+          <a-upload :accept="materialAccept" :show-upload-list="false" :disabled="!boundWatershed?.lybm || loading" :custom-request="onAttach">
+            <a-button size="small" type="text" :disabled="!boundWatershed?.lybm || loading">
+              <template #icon><PaperClipOutlined /></template>
+            </a-button>
+          </a-upload>
+        </a-tooltip>
         <!-- 发送/停止共用一个按钮，按状态切换 -->
         <a-tooltip v-if="loading" title="停止生成">
           <a-button size="small" danger class="send-btn" @click="onCancel">
@@ -172,6 +182,7 @@
     FileSearchOutlined,
     FileTextOutlined,
     FundOutlined,
+    PaperClipOutlined,
     RobotOutlined,
     SendOutlined,
     StopOutlined,
@@ -179,7 +190,17 @@
     UserOutlined,
   } from '@ant-design/icons-vue';
   import ShMarkdown from './ShMarkdown.vue';
-  import { cancelGenerate, confirmOutlineMessage, IOutlineChapter, IUsageItem, reconnectStream, sendChatMessage } from '../ShReportAssistant.api';
+  import {
+    cancelGenerate,
+    confirmOutlineMessage,
+    IOutlineChapter,
+    IUsageItem,
+    materialAccept,
+    reconnectStream,
+    sendChatMessage,
+    uploadMaterial,
+  } from '../ShReportAssistant.api';
+  import { message } from 'ant-design-vue';
   import { IChatMsg, stampMsg, useReportSession } from '../useReportSession';
 
   defineOptions({ name: 'ShReportAgentChat' });
@@ -209,8 +230,30 @@
   } = useReportSession();
 
   const inputText = ref('');
+  const attachChips = ref<string[]>([]);
   const messagesRef = ref<HTMLElement>();
   const usageOpen = ref(false);
+
+  async function onAttach(req: any) {
+    if (!boundWatershed.value?.lybm) {
+      message.warning('请先绑定流域');
+      req.onError?.(new Error('未绑定流域'));
+      return;
+    }
+    try {
+      await uploadMaterial(req.file, conversationId.value);
+      attachChips.value = [...attachChips.value, req.file.name];
+      req.onSuccess?.({});
+      message.success('资料已上传，正在解析');
+    } catch (e: any) {
+      req.onError?.(e);
+      message.error(e?.message || '上传失败');
+    }
+  }
+
+  function detachChip(name: string) {
+    attachChips.value = attachChips.value.filter((n) => n !== name);
+  }
   let abortCtl: AbortController | null = null;
   let streamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   let userStopped = false;
@@ -1195,6 +1238,13 @@
     .composer {
       flex: 0 0 auto;
       margin: 0 14px 14px;
+
+      .attach-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 6px;
+      }
       padding: 8px 12px 10px;
       border-radius: 12px;
       background: #fff;

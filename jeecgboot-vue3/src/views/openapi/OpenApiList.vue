@@ -32,8 +32,7 @@
                 <Icon icon="mdi:chevron-down"></Icon>
               </a-button>
         </a-dropdown>
-        <!-- 高级查询 -->
-        <super-query :config="superQueryConfig" @search="handleSuperQuery" />
+        <!-- 高级查询（online模块移除后暂不可用，请使用左侧查询表单） -->
       </template>
        <!--操作栏-->
       <template #action="{ record }">
@@ -59,7 +58,7 @@
   import { useMessage } from '/@/hooks/web/useMessage';
   import { copyTextToClipboard } from '/@/hooks/web/useCopyToClipboard';
   import OpenApiDrawer from './components/OpenApiDrawer.vue';
-  import { columns, searchFormSchema, superQuerySchema } from './OpenApi.data';
+  import { columns, searchFormSchema } from './OpenApi.data';
   import { list, deleteOne, batchDelete, getImportUrl, getExportUrl } from './OpenApi.api';
   const queryParam = reactive<any>({});
   const expandedRowKeys = ref<any[]>([]);
@@ -103,19 +102,6 @@
     })
 
   const [registerTable, {reload},{ rowSelection, selectedRowKeys }] = tableContext
-
-   // 高级查询配置
-   const superQueryConfig = reactive(superQuerySchema);
-
-   /**
-   * 高级查询事件
-   */
-   function handleSuperQuery(params) {
-     Object.keys(params).map((k) => {
-       queryParam[k] = params[k];
-     });
-     reload();
-   }
 
    /**
      * 展开事件

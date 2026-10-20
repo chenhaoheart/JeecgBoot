@@ -1,6 +1,7 @@
 package org.jeecg.modules.airag.shreport.service;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jeecg.modules.airag.shreport.constants.ShReportConstants;
 import org.jeecg.modules.airag.shreport.mapper.ShReportPgMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -20,13 +21,6 @@ import java.util.regex.Pattern;
 @Slf4j
 @Service
 public class ShReportMetricService {
-
-    public static final String KEY_OBJECT_COUNT = "OBJECT_COUNT";
-    public static final String KEY_POPULATION = "POPULATION";
-    public static final String KEY_AREA = "AREA";
-    public static final String KEY_RIVER_LENGTH = "RIVER_LENGTH";
-    public static final String KEY_SLOPE = "SLOPE";
-    public static final String KEY_ELEVATION = "ELEVATION";
 
     private static final Pattern AREA = Pattern.compile("(?:流域面积|集水面积|集雨面积)[^0-9\\n]{0,12}?(\\d+(?:\\.\\d+)?)\\s*(?:km²|km2|平方公里|平方千米)");
     private static final Pattern RIVER_LENGTH = Pattern.compile("(?:主沟|沟道|河沟)?(?:长度|河长)[^0-9\\n]{0,12}?(\\d+(?:\\.\\d+)?)\\s*(?:km|KM|公里|千米)");
@@ -49,8 +43,8 @@ public class ShReportMetricService {
             if (row != null && !row.isEmpty()) {
                 String count = String.valueOf(((Number) row.get("c")).longValue());
                 String population = String.valueOf(((Number) row.get("p")).longValue());
-                upsert(batchNo, lybm, KEY_OBJECT_COUNT, "防治对象数量", count, "处", "DATA", null, true);
-                upsert(batchNo, lybm, KEY_POPULATION, "受威胁人口", population, "人", "DATA", null, true);
+                upsert(batchNo, lybm, ShReportConstants.KEY_OBJECT_COUNT, "防治对象数量", count, "处", "DATA", null, true);
+                upsert(batchNo, lybm, ShReportConstants.KEY_POPULATION, "受威胁人口", population, "人", "DATA", null, true);
             }
         } catch (Exception e) {
             log.debug("锁定数据包指标失败：{}", e.getMessage());
@@ -62,10 +56,10 @@ public class ShReportMetricService {
         if (empty(batchNo) || empty(lybm) || content == null) {
             return;
         }
-        lockIfAbsent(batchNo, lybm, KEY_AREA, "流域面积", firstGroup(AREA, content), "km²");
-        lockIfAbsent(batchNo, lybm, KEY_RIVER_LENGTH, "主沟长度", firstGroup(RIVER_LENGTH, content), "km");
-        lockIfAbsent(batchNo, lybm, KEY_SLOPE, "沟道比降", firstGroup(SLOPE, content), "‰");
-        lockIfAbsent(batchNo, lybm, KEY_ELEVATION, "沟口高程", firstGroup(ELEVATION, content), "m");
+        lockIfAbsent(batchNo, lybm, ShReportConstants.KEY_AREA, "流域面积", firstGroup(AREA, content), "km²");
+        lockIfAbsent(batchNo, lybm, ShReportConstants.KEY_RIVER_LENGTH, "主沟长度", firstGroup(RIVER_LENGTH, content), "km");
+        lockIfAbsent(batchNo, lybm, ShReportConstants.KEY_SLOPE, "沟道比降", firstGroup(SLOPE, content), "‰");
+        lockIfAbsent(batchNo, lybm, ShReportConstants.KEY_ELEVATION, "沟口高程", firstGroup(ELEVATION, content), "m");
     }
 
     /** 查询指标键->值，供一致性校验使用 */

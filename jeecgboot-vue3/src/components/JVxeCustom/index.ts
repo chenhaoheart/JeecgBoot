@@ -26,10 +26,6 @@ export async function registerJVxeCustom() {
   await registerAsyncComponent(JVxeTypes.userSelect, import('./src/components/JVxeUserSelectCell.vue'));
   // 注册【部门选择】组件
   await registerAsyncComponent(JVxeTypes.departSelect, import('./src/components/JVxeDepartSelectCell.vue'));
-  // update-begin--author:liaozhiyang---date:20260317---for:【QQYUN-9441】online一对多加上关联记录和他表字段
-  // 注册【关联记录】组件
-  await registerAsyncComponent(JVxeTypes.linkTable, import('./src/components/JVxeLinkTableCell.vue'));
-  // update-end--author:liaozhiyang---date:20260317---for:【QQYUN-9441】online一对多加上关联记录和他表字段
   // 注册【省市区选择】组件
   // await registerAsyncComponent(JVxeTypes.pca, import('./src/components/JVxePcaCell.vue'));
   // 代码逻辑说明: 【QQYUN-8241】为避免首次加载china-area-data，JVxePcaCell组件需异步加载

@@ -14,6 +14,13 @@ jest.mock('/@/views/super/airag/shreport/ShReportAssistant.api', () => ({
   auditChapter: jest.fn(),
   regenerateChapter: jest.fn(),
   saveChapter: jest.fn(),
+  listMaterials: jest.fn().mockResolvedValue([]),
+  uploadMaterial: jest.fn(),
+  updateMaterial: jest.fn(),
+  deleteMaterial: jest.fn(),
+  reparseMaterial: jest.fn(),
+  previewMaterialBlob: jest.fn(),
+  materialAccept: '.xlsx,.pdf,.jpg',
 }));
 
 jest.mock('/@/store/modules/user', () => ({

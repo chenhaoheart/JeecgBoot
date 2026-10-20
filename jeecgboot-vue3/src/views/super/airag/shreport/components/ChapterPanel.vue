@@ -1,5 +1,11 @@
 <template>
   <div class="chapter-panel">
+    <a-tabs v-model:activeKey="panelTab" size="small" class="cp-tabs">
+      <a-tab-pane key="chapters" tab="章节审核" />
+      <a-tab-pane key="materials" tab="流域资料" />
+    </a-tabs>
+    <ShMaterialPanel v-if="panelTab === 'materials'" />
+    <template v-else>
     <!-- 报告进度总览条 -->
     <div v-if="chapters.length" class="cp-summary" :class="{ complete: allPassed }">
       <div class="sum-main">
@@ -106,6 +112,7 @@
               {{ q.message }}
             </div>
           </div>
+          <div v-if="ch.materialVer" class="body-alert src">本章引用资料：{{ materialNames(ch.materialVer) }}</div>
           <div class="content-box">
             <MarkdownViewer :value="ch.content || '（暂无内容）'" />
           </div>
@@ -199,6 +206,7 @@
         </div>
       </a-checkbox-group>
     </a-modal>
+    </template>
   </div>
 </template>
 
@@ -226,7 +234,8 @@
     Textarea,
   } from 'ant-design-vue';
   import { MarkdownViewer } from '/@/components/Markdown';
-  import { auditChapter, IChapter, regenerateChapter, saveChapter } from '../ShReportAssistant.api';
+  import { auditChapter, IChapter, listMaterials, regenerateChapter, saveChapter } from '../ShReportAssistant.api';
+  import ShMaterialPanel from './ShMaterialPanel.vue';
   import { lineDiff, IDiffLine } from './versionDiff';
   import { shortTime, statusMeta, genCostText } from './reportStatus';
   import { useReportSession } from '../useReportSession';
@@ -234,12 +243,23 @@
   defineOptions({ name: 'ShReportChapterPanel' });
 
   const ATextarea = Textarea;
+  const panelTab = ref('chapters');
+
+  function materialNames(ver?: string) {
+    if (!ver) return '';
+    return ver
+      .split(';')
+      .map((p) => p.split('@')[0])
+      .filter(Boolean)
+      .join('、');
+  }
 
   /** 空态展示的报告流水线（与 7 个章节子流程一一对应） */
   const PIPELINE = ['一、流域概况', '二、前期准备', '三、外业调查成果', '四、影响分析', '五、历史灾害', '六、防治区分析', '七、成果与建议'];
 
   // 批次 / 流域 / 模型 / 章节统一从共享上下文读取，顶部工具栏切换后此处自动联动
   const {
+    conversationId,
     batchNo,
     boundWatershed,
     currentModelId,
@@ -377,6 +397,23 @@
   async function submitRegenerate() {
     const ch = regenChapter.value!;
     const no = ch.chapterNo;
+    try {
+      const mats = await listMaterials(conversationId.value, boundWatershed.value?.lybm, batchNo.value);
+      const pending = (mats || []).filter((m) => m.parseStatus === 'pending' || m.parseStatus === 'parsing').length;
+      if (pending > 0) {
+        const ok = await new Promise<boolean>((resolve) => {
+          AModal.confirm({
+            title: '有资料尚未解析完成',
+            content: `${pending} 份资料仍在解析，本次将只使用已解析资料。是否继续？`,
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          });
+        });
+        if (!ok) return;
+      }
+    } catch {
+      // 列表失败不阻断重生成
+    }
     regenOpen.value = false;
     regenerating.value = [...regenerating.value, no];
     try {
@@ -505,6 +542,11 @@
     height: 100%;
     min-height: 0;
     background: #fff;
+
+    .cp-tabs {
+      flex: 0 0 auto;
+      padding: 4px 12px 0;
+    }
 
     /* 报告进度总览条 */
     .cp-summary {
@@ -855,6 +897,12 @@
               color: #d46b08;
               background: #fff7e6;
               border: 1px solid #ffd591;
+            }
+
+            &.src {
+              color: #1d4ed8;
+              background: #eff6ff;
+              border: 1px solid #bfdbfe;
             }
 
             &.qc {

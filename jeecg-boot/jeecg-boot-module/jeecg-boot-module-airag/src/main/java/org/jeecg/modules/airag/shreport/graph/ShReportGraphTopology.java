@@ -1,6 +1,8 @@
 package org.jeecg.modules.airag.shreport.graph;
 
 import org.bsc.langgraph4j.StateGraph;
+import org.jeecg.modules.airag.shreport.component.ShReportGraphNodes;
+import org.jeecg.modules.airag.shreport.component.ShReportGraphRunner;
 
 import java.util.ArrayList;
 import java.util.Collections;

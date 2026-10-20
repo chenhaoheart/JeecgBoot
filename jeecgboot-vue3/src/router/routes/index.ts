@@ -41,6 +41,7 @@ export const LoginRoute: AppRouteRecordRaw = {
 };
 
 // 代码逻辑说明: auth2登录页面路由------------
+
 export const Oauth2LoginRoute: AppRouteRecordRaw = {
   path: '/oauth2-app/login',
   name: 'oauth2-app-login',
@@ -64,48 +65,6 @@ export const TokenLoginRoute: AppRouteRecordRaw = {
     ignoreAuth: true,
   },
 };
-// 代码逻辑说明: 【QQYUN-7967】新增、编辑路由访问
-export const formUrlDetail = {
-  path: '/online/formUrlDetail/:id/:dataId',
-  name: 'formUrlDetail',
-  component: () => import('/@/views/super/online/cgform/auto/default/OnlineFormUrlDetail.vue'),
-  meta: {
-    title: '外部填报表单详情',
-    ignoreAuth: true,
-  },
-};
-
-export const formUrlAdd = {
-  path: '/online/formUrlAdd/:id',
-  name: 'formUrlAdd',
-  component: () => import('/@/views/super/online/cgform/auto/default/OnlineFormUrlAdd.vue'),
-  meta: {
-    title: '外部填报表单新增',
-    ignoreAuth: true,
-  },
-};
-
-export const formUrlEdit = {
-  path: '/online/formUrlEdit/:id/:dataId',
-  name: 'formUrlEdit',
-  component: () => import('/@/views/super/online/cgform/auto/default/OnlineFormUrlEdit.vue'),
-  meta: {
-    title: '外部填报表单编辑',
-    ignoreAuth: true,
-  },
-};
-
-export const formUrlSuccess = {
-  path: '/online/formUrlSuccess',
-  name: 'formUrlSuccess',
-  component: () => import('/@/views/super/online/cgform/auto/default/OnlineFormUrlSuccess.vue'),
-  meta: {
-    title: '外部填报表单成功',
-    ignoreAuth: true,
-  },
-};
-
-
 export const onlinePreview = {
   path: '/onlinePreview',
   name: 'online-preview',
@@ -119,4 +78,4 @@ export const onlinePreview = {
 
 
 // Basic routing without permission
-export const basicRoutes = [LoginRoute, RootRoute, ...mainOutRoutes, REDIRECT_ROUTE, PAGE_NOT_FOUND_ROUTE, TokenLoginRoute, Oauth2LoginRoute, formUrlDetail, formUrlAdd, formUrlEdit, formUrlSuccess, onlinePreview];
+export const basicRoutes = [LoginRoute, RootRoute, ...mainOutRoutes, REDIRECT_ROUTE, PAGE_NOT_FOUND_ROUTE, TokenLoginRoute, Oauth2LoginRoute, onlinePreview];

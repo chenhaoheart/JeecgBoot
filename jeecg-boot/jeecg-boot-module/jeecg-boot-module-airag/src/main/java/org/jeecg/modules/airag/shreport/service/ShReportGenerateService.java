@@ -8,12 +8,16 @@ import org.jeecg.modules.airag.flow.entity.AiragFlow;
 import org.jeecg.modules.airag.flow.service.IAiragFlowService;
 import org.jeecg.modules.airag.flow.vo.api.FlowDebugParams;
 import org.jeecg.modules.airag.flow.vo.api.FlowRunParams;
-import org.jeecg.modules.airag.shreport.*;
+import org.jeecg.modules.airag.shreport.component.ShReportBatchLock;
+import org.jeecg.modules.airag.shreport.component.ShReportConcurrencyLimiter;
+import org.jeecg.modules.airag.shreport.component.ShReportModelVariant;
 import org.jeecg.modules.airag.shreport.constants.ShReportConstants;
-import org.jeecg.modules.airag.shreport.graph.ShReportGraphRunner;
+import org.jeecg.modules.airag.shreport.entity.ShReportQcIssue;
+import org.jeecg.modules.airag.shreport.exception.ShReportBatchBusyException;
+import org.jeecg.modules.airag.shreport.component.ShReportGraphRunner;
 import org.jeecg.modules.airag.shreport.mapper.ShReportPgMapper;
+import org.jeecg.modules.airag.shreport.util.ShReportTextChecker;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -102,7 +106,7 @@ public class ShReportGenerateService {
     private ShReportConstants.ShReportDataPacketService dataPacketService;
 
     @Autowired
-    private ShReportModelVariantService modelVariantService;
+    private ShReportModelVariant modelVariantService;
 
     @Autowired
     @Lazy
@@ -114,6 +118,10 @@ public class ShReportGenerateService {
     @Autowired
     private ShReportBatchLock batchLock;
 
+    @Autowired
+    @Lazy
+    private ShReportMaterialService materialService;
+
     /** 最近一次流程写作所用版本，按 batch|chapter 记录，persist 落库时取用 */
     private final java.util.concurrent.ConcurrentMap<String, String> flowVerByChapter =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -121,6 +129,15 @@ public class ShReportGenerateService {
     /** 取出本章最近一次流程写作的版本（流程名@设计更新时间）；不移除，同批重写会覆盖 */
     public String lastFlowVersion(String batchNo, int chapterNo) {
         return flowVerByChapter.get((batchNo == null ? "" : batchNo) + "|" + chapterNo);
+    }
+
+    /** 本章引用的上传资料清单；无资料时可能为 "" 或 null */
+    public String lastMaterialVer(String batchNo, int chapterNo) {
+        if (materialService == null) {
+            return null;
+        }
+        String v = materialService.lastMaterialVer(batchNo, chapterNo);
+        return v == null || v.isBlank() ? null : v;
     }
 
     /**
@@ -134,6 +151,7 @@ public class ShReportGenerateService {
         ensureColumn("flow_ver", "varchar(200)", "生成所用流程版本(流程名@设计更新时间)");
         ensureColumn("gen_start_ts", "bigint", "本章本次生成开始时间(毫秒时间戳)");
         ensureColumn("gen_cost_ms", "bigint", "本章从开始生成到最终完成的耗时(毫秒)");
+        ensureColumn("material_ver", "text", "本章引用的上传资料清单(文件名@更新时间，分号分隔)");
     }
 
     private void ensureColumn(String column, String type, String comment) {
@@ -262,11 +280,11 @@ public class ShReportGenerateService {
     public List<Map<String, Object>> listChapters(String batchNo, String lybm) {
         if (lybm == null || lybm.isEmpty()) {
             return pgQuery.queryForList(
-                    "SELECT id, batch_no, lybm, lymc, chapter_no, chapter_name, content, content_prev, status, audit_note, fail_reason, flow_ver, gen_cost_ms, update_time " +
+                    "SELECT id, batch_no, lybm, lymc, chapter_no, chapter_name, content, content_prev, status, audit_note, fail_reason, flow_ver, material_ver, gen_cost_ms, update_time " +
                             "FROM sh_report_chapter WHERE batch_no=? ORDER BY lybm NULLS FIRST, chapter_no", batchNo);
         }
         return pgQuery.queryForList(
-                "SELECT id, batch_no, lybm, lymc, chapter_no, chapter_name, content, content_prev, status, audit_note, fail_reason, flow_ver, gen_cost_ms, update_time " +
+                "SELECT id, batch_no, lybm, lymc, chapter_no, chapter_name, content, content_prev, status, audit_note, fail_reason, flow_ver, material_ver, gen_cost_ms, update_time " +
                         "FROM sh_report_chapter WHERE batch_no=? AND lybm=? ORDER BY chapter_no", batchNo, lybm);
     }
 
@@ -390,7 +408,7 @@ public class ShReportGenerateService {
                            Boolean preservePrevVersion) {
         content = trimToChapter(content, chapterNo);
         boolean failed = ShReportConstants.STATUS_FAILED.equals(status);
-        if (failed && (content == null || content.isBlank() || isPlaceholder(content))) {
+        if (failed && (content == null || content.isBlank() || ShReportTextChecker.isPlaceholder(content))) {
             content = "";
         } else if (content == null || content.trim().isEmpty()) {
             content = "【系统默认内容】本章内容生成结果为空，请重新生成本章节。";
@@ -399,6 +417,7 @@ public class ShReportGenerateService {
             failReason = "生成失败";
         }
         String chapterName = ShReportConstants.chapterName(chapterNo);
+        String materialVer = lastMaterialVer(batchNo, chapterNo);
         List<Map<String, Object>> exist = pgQuery.queryForList(
                 "SELECT id, content, status FROM sh_report_chapter WHERE batch_no=? AND COALESCE(lybm,'')=COALESCE(?,'') AND chapter_no=?",
                 batchNo, lybm, chapterNo);
@@ -407,28 +426,28 @@ public class ShReportGenerateService {
             String oldContent = exist.get(0).get("content") == null ? "" : exist.get(0).get("content").toString();
             String oldStatus = exist.get(0).get("status") == null ? "" : exist.get(0).get("status").toString();
             // 占位/生成中文案不覆盖上一版；质检过程中的落库由调用方显式要求保留上一版
-            boolean keepPrev = isPlaceholder(oldContent)
+            boolean keepPrev = ShReportTextChecker.isPlaceholder(oldContent)
                     || Boolean.TRUE.equals(preservePrevVersion)
                     || (preservePrevVersion == null
                         && (ShReportConstants.STATUS_GENERATING.equals(status)
                             || ShReportConstants.STATUS_GENERATING.equals(oldStatus)));
             if (keepPrev) {
                 pgQuery.update(
-                        "UPDATE sh_report_chapter SET content=?, lymc=?, status=?, audit_note=?, fail_reason=?, flow_ver=?, update_time=? " +
+                        "UPDATE sh_report_chapter SET content=?, lymc=?, status=?, audit_note=?, fail_reason=?, flow_ver=?, material_ver=?, update_time=? " +
                                 "WHERE batch_no=? AND COALESCE(lybm,'')=COALESCE(?,'') AND chapter_no=?",
-                        content, lymc, status, auditNote, failReason, flowVersion, now, batchNo, lybm, chapterNo);
+                        content, lymc, status, auditNote, failReason, flowVersion, materialVer, now, batchNo, lybm, chapterNo);
             } else {
                 pgQuery.update(
-                        "UPDATE sh_report_chapter SET content_prev=content, content=?, lymc=?, status=?, audit_note=?, fail_reason=?, flow_ver=?, update_time=? " +
+                        "UPDATE sh_report_chapter SET content_prev=content, content=?, lymc=?, status=?, audit_note=?, fail_reason=?, flow_ver=?, material_ver=?, update_time=? " +
                                 "WHERE batch_no=? AND COALESCE(lybm,'')=COALESCE(?,'') AND chapter_no=?",
-                        content, lymc, status, auditNote, failReason, flowVersion, now, batchNo, lybm, chapterNo);
+                        content, lymc, status, auditNote, failReason, flowVersion, materialVer, now, batchNo, lybm, chapterNo);
             }
         } else {
             pgQuery.update(
-                    "INSERT INTO sh_report_chapter (id, batch_no, lybm, lymc, chapter_no, chapter_name, content, content_prev, status, audit_note, fail_reason, flow_ver, create_time, update_time) " +
-                            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO sh_report_chapter (id, batch_no, lybm, lymc, chapter_no, chapter_name, content, content_prev, status, audit_note, fail_reason, flow_ver, material_ver, create_time, update_time) " +
+                            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     UUID.randomUUID().toString(), batchNo, lybm, lymc, chapterNo, chapterName,
-                    content, null, status, auditNote, failReason, flowVersion, now, now);
+                    content, null, status, auditNote, failReason, flowVersion, materialVer, now, now);
         }
     }
 
@@ -631,6 +650,11 @@ public class ShReportGenerateService {
         if (flowRow == null) {
             return "【系统默认内容】未找到流程：" + flowName;
         }
+        String chainEl = String.valueOf(flowRow.get("chain"));
+        if (ShReportModelVariant.isBrokenChapterChain(chainEl)) {
+            return "【系统默认内容】流程「" + flowName + "」编排损坏：降级节点被拖成了并行分支（WHEN 且无 CATCH），"
+                    + "并行默认只等 15 秒，主链路会被取消。请在设计器中把 end-fb 改回 CATCH 兜底节点后重试。";
+        }
         // 记录流程版本（流程名@设计更新时间），persist 时落 flow_ver，便于追溯生成所用提示词版本
         Object designTime = flowRow.get("design_time");
         flowVerByChapter.put((batchNo == null ? "" : batchNo) + "|" + chapterNo,
@@ -661,7 +685,7 @@ public class ShReportGenerateService {
         }
         String fromCallback = contentRef.get();
         String fromDb = latestContent(batchNo, lybm, chapterNo);
-        if (fromDb != null && !isPlaceholder(fromDb) && !"正在生成…".equals(fromDb.trim())) {
+        if (fromDb != null && !ShReportTextChecker.isPlaceholder(fromDb) && !"正在生成…".equals(fromDb.trim())) {
             return fromDb;
         }
         if (fromCallback != null && !fromCallback.isEmpty()) {
@@ -680,14 +704,30 @@ public class ShReportGenerateService {
         if (lymc != null) {
             input.put("wsmc", lymc);
         }
-        input.put("sjbao", dataPacketService.buildPacket(chapterNo, lybm, lymc));
+        boolean hasHistory = materialService != null && materialService.enabled()
+                && materialService.hasHistoryMaterials(lybm, batchNo);
+        input.put("sjbao", dataPacketService.buildPacket(chapterNo, lybm, lymc, hasHistory));
         String chapterOutline = ShReportOutlineService.toChapterPrompt(outline, chapterNo);
         if (chapterOutline != null && !chapterOutline.isEmpty()) {
             input.put("tigang", chapterOutline);
         }
+        boolean halfBudget = ctx != null && ctx.prevDraft != null && !ctx.prevDraft.isBlank();
+        String materials = materialService == null || !materialService.enabled()
+                ? null : materialService.buildChapterMaterials(batchNo, lybm, chapterNo, halfBudget);
         String buochong = buildBuochong(requirement,
                 chapterNo == 4 ? dataPacketService.ch4ParamsText() : null,
                 ctx.prevDraft);
+        if (chapterNo == 5 && materials != null) {
+            if (materials.contains("洪痕")) {
+                input.put("honghen", materials);
+            }
+            input.put("lishijilv", materials);
+            String note = "本章历史灾害资料已注入「历史灾害记录」入参，请依据该入参撰写；引用年份、场次、损失时必须写明来源文件名。";
+            buochong = buochong == null ? note : buochong + "\n\n" + note;
+        } else if (materials != null) {
+            String block = materialService.materialRulesBlock() + materials;
+            buochong = buochong == null ? block : buochong + "\n\n" + block;
+        }
         if (buochong != null) {
             input.put("buochong", buochong);
         }
@@ -751,6 +791,33 @@ public class ShReportGenerateService {
     private void runStoredChapterFlow(Map<String, Object> flowRow, Map<String, Object> input,
                                       AtomicReference<String> contentRef,
                                       java.util.function.Consumer<com.alibaba.fastjson.JSONObject> usageSink) {
+        Object designObj = flowRow.get("design");
+        String patched = ShReportModelVariant.relaxPacketOnlySource(
+                designObj == null ? null : String.valueOf(designObj));
+        if (patched != null && designObj != null && !patched.equals(String.valueOf(designObj))) {
+            // 库内流程尚未打补丁时走内存 design，避免仍写「唯一事实来源」
+            AiragFlow overlay = new AiragFlow();
+            overlay.setChain(String.valueOf(flowRow.get("chain")));
+            overlay.setDesign(patched);
+            overlay.setName(String.valueOf(flowRow.get("name")));
+            FlowDebugParams debug = new FlowDebugParams();
+            debug.setFlow(overlay);
+            debug.setInputParams(input);
+            debug.setResponseMode("blocking");
+            try {
+                Object ret = airagFlowService.debugFlow(debug);
+                extractUsage(ret, usageSink);
+                String text = extractFlowOutputText(ret);
+                if (text != null && !text.isBlank()) {
+                    contentRef.set(stripJsonWrapper(text));
+                    return;
+                }
+            } catch (Exception e) {
+                log.warn("PACKET_LINE 补丁流程运行失败，回退原流程: {}", e.getMessage());
+            } finally {
+                removeTempFlowChainQuietly(debug.getFlowId());
+            }
+        }
         FlowRunParams params = new FlowRunParams();
         params.setFlowId(String.valueOf(flowRow.get("id")));
         params.setInputParams(input);
@@ -768,8 +835,9 @@ public class ShReportGenerateService {
                                        java.util.function.Consumer<com.alibaba.fastjson.JSONObject> usageSink) {
         Object designObj = flowRow.get("design");
         String modelName = lookupModelName(modelId);
-        String overlaid = ShReportModelVariantService.replaceLlmModelId(
-                designObj == null ? null : String.valueOf(designObj), modelId, modelName);
+        String designJson = designObj == null ? null : String.valueOf(designObj);
+        designJson = ShReportModelVariant.relaxPacketOnlySource(designJson);
+        String overlaid = ShReportModelVariant.replaceLlmModelId(designJson, modelId, modelName);
         if (overlaid == null) {
             log.warn("基础流程无 llm 节点，按原流程运行 name={}", flowRow.get("name"));
             runStoredChapterFlow(flowRow, input, contentRef, usageSink);
@@ -795,13 +863,22 @@ public class ShReportGenerateService {
                 runStoredChapterFlow(flowRow, input, contentRef, usageSink);
             }
         } finally {
-            try {
-                if (params.getFlowId() != null) {
-                    FlowBus.removeChain(params.getFlowId());
-                }
-            } catch (Exception e) {
-                log.debug("移除临时流程链失败：{}", e.getMessage());
-            }
+            removeTempFlowChainQuietly(params.getFlowId());
+        }
+    }
+
+    /**
+     * 移除 debugFlow 的临时链。debugFlow 内部通常已经清理过，这里若直接 removeChain，
+     * LiteFlow 会在链不存在时打 ERROR「cannot find the chain[...]」，排障时容易被误当成失败原因。
+     */
+    private void removeTempFlowChainQuietly(String flowId) {
+        if (flowId == null || flowId.isBlank() || !FlowBus.containChain(flowId)) {
+            return;
+        }
+        try {
+            FlowBus.removeChain(flowId);
+        } catch (Exception e) {
+            log.debug("移除临时流程链失败：{}", e.getMessage());
         }
     }
 
@@ -959,10 +1036,6 @@ public class ShReportGenerateService {
                 "SELECT content FROM sh_report_chapter WHERE batch_no=? AND COALESCE(lybm,'')=COALESCE(?,'') AND chapter_no=?",
                 String.class, batchNo, lybm, chapterNo);
         return rows.isEmpty() ? null : rows.get(0);
-    }
-
-    public static boolean isPlaceholder(String content) {
-        return content == null || content.isBlank() || content.contains("【系统默认内容】") || "正在生成…".equals(content.trim());
     }
 
     public static String stripJsonWrapper(String text) {

@@ -102,8 +102,6 @@ export default async ({ command, mode }: ConfigEnv): Promise<UserConfig> => {
           'src/views/system/depart/index.vue',
           'src/views/system/menu/index.vue',
           'src/views/system/dict/index.vue',
-          'src/views/super/online/cgform/index.vue',
-          'src/views/super/online/cgform/auto/default/OnlineAutoList.vue',
           'src/views/super/airag/aiapp/AiAppList.vue',
         ],
       },

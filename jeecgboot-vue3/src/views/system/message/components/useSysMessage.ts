@@ -252,13 +252,6 @@ export function useMessageHref(emit, props){
           showDesignFormBtn: false,
         };
         break;
-      case 'cgform':
-        //Online表单
-        currentModal.value = 'OnlineAutoModal';
-        bindParams.value = {
-          id: params.formId,
-        }
-        break;
       default:
         currentModal.value = null;
         break;

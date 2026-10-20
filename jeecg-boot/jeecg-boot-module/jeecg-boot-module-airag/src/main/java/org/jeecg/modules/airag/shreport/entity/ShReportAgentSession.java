@@ -6,7 +6,7 @@ import java.util.Date;
 
 /**
  * 山洪报告助手会话行（sh_report_agent_session，一张图 PostgreSQL shreport_map 库）。
- * messages 为 JSON 数组字符串（角色+正文+时间+id），由 ShReportSessionMessageMerge 负责并集合并。
+ * messages 为 JSON 数组字符串（角色+正文+时间+id），由 service.ShReportSessionMessageMerge 负责并集合并。
  */
 @Data
 public class ShReportAgentSession {

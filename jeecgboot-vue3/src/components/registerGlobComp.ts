@@ -9,8 +9,6 @@ import { Space } from 'ant-design-vue';
 
 // ant-design-vue 组件通过 unplugin-vue-components + AntDesignVueResolver 自动按需导入，无需手动注册
 const compList = [Icon, AIcon, JUploadButton];
-//注册online模块的全局组件
-import { registerOnlineComp } from '/@/views/super/online/cgform/auto/comp/index';
 import { createAsyncComponent } from '/@/utils/factory/createAsyncComponent';
 
 
@@ -33,7 +31,6 @@ export function registerGlobComp(app: App) {
   );
   // update-end--author:liaozhiyang---date:20260227---for:【QQYUN-14751】tinymce富文本、JEasyCron、JLinkTableCard异步加载
   app
-    .use(registerOnlineComp)
     .use(Button)
-  console.log("---初始化---， 全局注册Antd、仪表盘、流程设计器、online、流程等组件--------------")
+  console.log("---初始化---， 全局注册Antd、仪表盘、流程设计器等组件--------------")
 }

@@ -5,9 +5,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.system.util.JwtUtil;
-import org.jeecg.modules.airag.shreport.ShReportAgentSessionDao;
-import org.jeecg.modules.airag.shreport.service.ShReportModelVariantService;
-import org.jeecg.modules.airag.shreport.ShReportSessionStore;
+import org.jeecg.modules.airag.shreport.service.ShReportAgentSessionService;
+import org.jeecg.modules.airag.shreport.component.ShReportModelVariant;
+import org.jeecg.modules.airag.shreport.component.ShReportSessionStore;
 import org.jeecg.modules.airag.shreport.service.ShReportAgentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -34,10 +34,10 @@ public class ShReportAgentController {
     private ShReportSessionStore sessionStore;
 
     @Autowired
-    private ShReportModelVariantService modelVariantService;
+    private ShReportModelVariant modelVariantService;
 
     @Autowired
-    private ShReportAgentSessionDao agentSessionDao;
+    private ShReportAgentSessionService agentSessionDao;
 
     /** 会话列表持久化的用户维度：取登录用户名，取不到降级为 sessionId（与通用聊天的会话缓存策略一致） */
     private String currentUserKey() {

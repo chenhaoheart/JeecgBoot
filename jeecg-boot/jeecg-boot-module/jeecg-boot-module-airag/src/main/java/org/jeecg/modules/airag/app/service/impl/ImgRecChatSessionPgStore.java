@@ -27,7 +27,7 @@ import java.util.concurrent.Executors;
 
 /**
  * 「图像识别」独立页（sessionType=imgrec）会话的 PostgreSQL 持久化。
- * 设计参考 ShReportAgentSessionDao（山洪报告助手会话按 用户+会话ID 入库、幂等建表、消息JSON存储），
+ * 设计参考 service.ShReportAgentSessionDao（山洪报告助手会话按 用户+会话ID 入库、幂等建表、消息JSON存储），
  * 但落库到一张图的 PostgreSQL 数据源（spring.datasource.dynamic.datasource.shreport，shreport_map 库）。
  * <p>
  * Redis 仍是会话的一级存储（读路径全部走 Redis）；本类只在保存时异步双写、

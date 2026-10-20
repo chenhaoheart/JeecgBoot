@@ -7,21 +7,6 @@ import {createRouter as createVueRouter, destroyRouter, router} from './router'
 
 // 白名单应该包含基本静态路由
 const WHITE_NAME_LIST: string[] = [];
-// Online 路由在应用启动时注册，退出登录重置权限路由时需要保留，否则重新登录后会命中 404。
-const ONLINE_ROUTE_NAMES = [
-  'onl-auto-cgform-router',
-  'OnlineAutoList',
-  'DefaultOnlineList',
-  'CgformErpList',
-  'OnlCgformInnerTableList',
-  'OnlCgformTabList',
-  'onl-auto-cgreport-router',
-  'OnlCgReportList',
-  'onl-auto-graphreport-router',
-  'GraphreportAutoChart',
-  'onl-auto-desform-router',
-  'AutoDesformDataList'
-];
 const getRouteNames = (array: any[]) =>
   array.forEach((item) => {
     WHITE_NAME_LIST.push(item.name);
@@ -55,7 +40,7 @@ export function createRouter() {
 export function resetRouter() {
   router.getRoutes().forEach((route) => {
     const { name } = route;
-    if (name && !WHITE_NAME_LIST.includes(name as string) && !ONLINE_ROUTE_NAMES.includes(name as string)) {
+    if (name && !WHITE_NAME_LIST.includes(name as string)) {
       router.hasRoute(name) && router.removeRoute(name);
     }
   });

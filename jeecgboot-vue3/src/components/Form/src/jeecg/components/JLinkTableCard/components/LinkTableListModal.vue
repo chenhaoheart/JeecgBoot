@@ -84,7 +84,7 @@ import { defineComponent, watch, ref, toRaw, computed } from 'vue';
 import { BasicModal, useModalInner } from '/@/components/Modal';
 import { useMessage } from '/@/hooks/web/useMessage';
 import { defHttp } from '/@/utils/http/axios';
-import { useTableColumns } from '@/views/super/online/cgform/hooks/auto/useTableColumns';
+import { useTableColumns } from '../hooks/useTableColumns';
 import { useFixedHeightModal } from '../hooks/useLinkTable';
 import { getFileAccessHttpUrl } from '/@/utils/common/compUtils';
 import { CheckSquareFilled, BorderOutlined } from '@ant-design/icons-vue';

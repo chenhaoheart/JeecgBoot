@@ -14,8 +14,13 @@ import org.jeecg.common.system.util.JwtUtil;
 import org.jeecg.common.util.SpringContextUtils;
 import org.jeecg.modules.airag.common.handler.AIChatParams;
 import org.jeecg.modules.airag.llm.handler.AIChatHandler;
-import org.jeecg.modules.airag.shreport.*;
+import org.jeecg.modules.airag.shreport.component.ShReportConcurrencyLimiter;
+import org.jeecg.modules.airag.shreport.component.ShReportModelVariant;
+import org.jeecg.modules.airag.shreport.component.ShReportSessionStore;
 import org.jeecg.modules.airag.shreport.constants.ShReportConstants;
+import org.jeecg.modules.airag.shreport.util.ReportWordBuilder;
+import org.jeecg.modules.airag.shreport.component.ShReportUsageTracker;
+import org.jeecg.modules.airag.shreport.util.ShReportIntentValidator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -93,7 +98,7 @@ public class ShReportAgentService {
     private ShReportOutlineService outlineService;
 
     @Autowired
-    private ShReportModelVariantService modelVariantService;
+    private ShReportModelVariant modelVariantService;
 
     @Autowired
     private ShReportConcurrencyLimiter concurrencyLimiter;
@@ -107,9 +112,12 @@ public class ShReportAgentService {
     @Autowired(required = false)
     private ShReportKnowledgeService knowledgeService;
 
+    @Autowired(required = false)
+    private ShReportMaterialService materialService;
+
     /** 会话消息服务端落库：对齐通用 AI 助手「后端单点写」的设计，客户端推送只作补充 */
     @Autowired
-    private ShReportAgentSessionDao agentSessionDao;
+    private ShReportAgentSessionService agentSessionDao;
 
     /** 进行中对话轮的内容记录器（按 emitter 弱引用挂载），done 事件或连接结束时落库 */
     private final Map<SseEmitter, TurnRecorder> turnRecorders =
@@ -434,6 +442,16 @@ public class ShReportAgentService {
         if (usage != null) {
             out.put("usage", usage);
         }
+        if (materialService != null && materialService.enabled()) {
+            String lybm = ctx.getString("lybm");
+            String batchNo = ctx.getString("batchNo");
+            try {
+                out.put("materials", materialService.list(conversationId, lybm, batchNo));
+                out.put("materialPending", materialService.countUnready(lybm, batchNo));
+            } catch (Exception e) {
+                log.debug("资料快照失败: {}", e.getMessage());
+            }
+        }
         return out;
     }
 
@@ -502,6 +520,17 @@ public class ShReportAgentService {
         };
         AtomicBoolean heartbeatStop = new AtomicBoolean(false);
         startHeartbeat(emitter, sseLock, heartbeatStop);
+        if (materialService != null && materialService.enabled()) {
+            try {
+                int pending = materialService.countUnready(lybm, batchNo);
+                if (pending > 0) {
+                    sendEvent(emitter, sseLock, "text",
+                            pending + " 份资料尚未解析完成，本次生成只使用已解析资料。可等解析完成后再重新生成本章。");
+                }
+            } catch (Exception e) {
+                log.debug("检查未解析资料失败: {}", e.getMessage());
+            }
+        }
         try {
             flowExecutor.submit(() -> {
                 try {
@@ -1023,30 +1052,30 @@ public class ShReportAgentService {
     /** 从问题措辞猜统计类别（仅规则兜底用，主链路由模型给 dataQuery） */
     static String guessDataQuery(String m) {
         if (m.matches(".*(哪些|清单|列表).*(小流域|流域).*")) {
-            return ShReportDataQueryService.Q_LIST_WATERSHEDS;
+            return ShReportConstants.Q_LIST_WATERSHEDS;
         }
         if (m.matches(".*(桥涵坝|阻水|R1|涉水工程).*")) {
-            return ShReportDataQueryService.Q_CULVERT;
+            return ShReportConstants.Q_CULVERT;
         }
         if (m.matches(".*(占地|占压|沟滩).*")) {
-            return ShReportDataQueryService.Q_GULLY;
+            return ShReportConstants.Q_GULLY;
         }
         if (m.matches(".*(风险|隐患|壅水|漫流|泥石流|滑坡).*")) {
-            return ShReportDataQueryService.Q_RISK;
+            return ShReportConstants.Q_RISK;
         }
         if (m.matches(".*(乡镇).*")) {
-            return ShReportDataQueryService.Q_BY_TOWN;
+            return ShReportConstants.Q_BY_TOWN;
         }
         if (m.matches(".*(县区|区县|县|区).*")) {
-            return ShReportDataQueryService.Q_BY_COUNTY;
+            return ShReportConstants.Q_BY_COUNTY;
         }
         if (m.matches(".*(类型|居民|学校|医院).*")) {
-            return ShReportDataQueryService.Q_BY_TYPE;
+            return ShReportConstants.Q_BY_TYPE;
         }
         if (m.matches(".*(哪些|清单|列表|名单).*")) {
-            return ShReportDataQueryService.Q_LIST_OBJECTS;
+            return ShReportConstants.Q_LIST_OBJECTS;
         }
-        return ShReportDataQueryService.Q_OVERVIEW;
+        return ShReportConstants.Q_OVERVIEW;
     }
 
     private static int extractChapterNo(String m) {

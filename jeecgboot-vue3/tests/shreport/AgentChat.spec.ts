@@ -29,6 +29,8 @@ jest.mock('/@/views/super/airag/shreport/ShReportAssistant.api', () => ({
   listServerSessions: jest.fn().mockResolvedValue([]),
   saveServerSession: jest.fn().mockResolvedValue({}),
   deleteServerSession: jest.fn().mockResolvedValue({}),
+  uploadMaterial: jest.fn().mockResolvedValue({}),
+  materialAccept: '.xlsx,.pdf,.jpg',
 }));
 
 jest.mock('/@/store/modules/user', () => ({
@@ -83,6 +85,7 @@ jest.mock('ant-design-vue', () => ({
 jest.mock('@ant-design/icons-vue', () => ({
   CloseOutlined: { name: 'CloseOutlined', template: '<i class="icon-close" />' },
   PlusOutlined: { name: 'PlusOutlined', template: '<i class="icon-plus" />' },
+  PaperClipOutlined: { name: 'PaperClipOutlined', template: '<i />' },
 }));
 
 import { mount } from '@vue/test-utils';

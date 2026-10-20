@@ -1,6 +1,7 @@
 package org.jeecg.modules.airag.shreport.service;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jeecg.modules.airag.shreport.constants.ShReportConstants;
 import org.jeecg.modules.airag.shreport.mapper.ShReportPgMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -8,7 +9,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 山洪报告助手「数据问答」白名单查询：统计类问题（多少个/分布/清单）不靠模型自由发挥，
@@ -20,19 +20,6 @@ import java.util.Set;
 @Service
 public class ShReportDataQueryService {
 
-    public static final String Q_OVERVIEW = "overview";
-    public static final String Q_BY_TYPE = "by_type";
-    public static final String Q_BY_COUNTY = "by_county";
-    public static final String Q_BY_TOWN = "by_town";
-    public static final String Q_RISK = "risk";
-    public static final String Q_CULVERT = "culvert";
-    public static final String Q_GULLY = "gully";
-    public static final String Q_LIST_OBJECTS = "list_objects";
-    public static final String Q_LIST_WATERSHEDS = "list_watersheds";
-
-    public static final Set<String> SUPPORTED = Set.of(
-            Q_OVERVIEW, Q_BY_TYPE, Q_BY_COUNTY, Q_BY_TOWN, Q_RISK, Q_CULVERT, Q_GULLY, Q_LIST_OBJECTS, Q_LIST_WATERSHEDS);
-
     @Autowired
     private ShReportPgMapper pgMapper;
 
@@ -42,7 +29,7 @@ public class ShReportDataQueryService {
     /**
      * 执行白名单统计查询并组织为可直接推送的中文回答。
      *
-     * @param dataQuery 查询类别（见 SUPPORTED）
+     * @param dataQuery 查询类别（见 ShReportConstants.SUPPORTED_DATA_QUERIES）
      * @param county    县区过滤（可为空）
      * @param town      乡镇过滤（可为空）
      * @param ftp       防治对象类型过滤（可为空）
@@ -50,33 +37,33 @@ public class ShReportDataQueryService {
      * @param boundLybm 非空表示仅统计该流域（wscd）；空表示全域
      */
     public String query(String dataQuery, String county, String town, String ftp, String keyword, String boundLybm) {
-        String q = SUPPORTED.contains(dataQuery) ? dataQuery : Q_OVERVIEW;
+        String q = ShReportConstants.SUPPORTED_DATA_QUERIES.contains(dataQuery) ? dataQuery : ShReportConstants.Q_OVERVIEW;
         switch (q) {
-            case Q_BY_TYPE:
+            case ShReportConstants.Q_BY_TYPE:
                 return table("防治对象类型统计", objectRows(
                         "COALESCE(NULLIF(TRIM(ftp),''),'未分类') AS \"类型\", COUNT(*) AS \"数量\", COALESCE(SUM(pcount),0) AS \"涉及人口\"",
                         " GROUP BY 1 ORDER BY 2 DESC", county, town, ftp, keyword, boundLybm));
-            case Q_BY_COUNTY:
+            case ShReportConstants.Q_BY_COUNTY:
                 return table("县区防治对象分布", objectRows(
                         "COALESCE(NULLIF(TRIM(county_name),''),'未知') AS \"县区\", COUNT(*) AS \"防治对象数\", COALESCE(SUM(pcount),0) AS \"涉及人口\"",
                         " GROUP BY 1 ORDER BY 2 DESC", county, town, ftp, keyword, boundLybm));
-            case Q_BY_TOWN:
+            case ShReportConstants.Q_BY_TOWN:
                 return table("乡镇防治对象分布", objectRows(
                         "COALESCE(NULLIF(TRIM(county_name),''),'未知') AS \"县区\", COALESCE(NULLIF(TRIM(town_name),''),'未知') AS \"乡镇\", COUNT(*) AS \"对象数\", COALESCE(SUM(pcount),0) AS \"涉及人口\"",
                         " GROUP BY 1,2 ORDER BY 3 DESC LIMIT 30", county, town, ftp, keyword, boundLybm));
-            case Q_RISK:
+            case ShReportConstants.Q_RISK:
                 return riskReply(county, town, ftp, keyword, boundLybm);
-            case Q_CULVERT:
+            case ShReportConstants.Q_CULVERT:
                 return culvertReply();
-            case Q_GULLY:
+            case ShReportConstants.Q_GULLY:
                 return table("沟滩占地统计", pgMapper.selectGullyStats());
-            case Q_LIST_OBJECTS:
+            case ShReportConstants.Q_LIST_OBJECTS:
                 return table("防治对象清单（最多50条）", objectRows(
                         "fnm AS \"对象名称\", COALESCE(NULLIF(TRIM(county_name),''),'未知') AS \"县区\", COALESCE(NULLIF(TRIM(town_name),''),'未知') AS \"乡镇\", COALESCE(NULLIF(TRIM(ftp),''),'未分类') AS \"类型\", pcount AS \"人口\", rvnm AS \"所在河流\", wsnm AS \"所在流域\"",
                         " ORDER BY pcount DESC LIMIT 50", county, town, ftp, keyword, boundLybm));
-            case Q_LIST_WATERSHEDS:
+            case ShReportConstants.Q_LIST_WATERSHEDS:
                 return table("小流域清单（最多50条）", pgMapper.selectWatershedList(keyword));
-            case Q_OVERVIEW:
+            case ShReportConstants.Q_OVERVIEW:
             default:
                 return overviewReply(county, town, ftp, keyword, boundLybm);
         }

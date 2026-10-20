@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -34,6 +35,28 @@ public final class ShReportConstants {
     public static final String STATUS_FAILED = "失败";
 
     public static final int CHAPTER_COUNT = 7;
+
+    /** 数据问答白名单类别（固定 SQL 执行见 ShReportDataQueryService） */
+    public static final String Q_OVERVIEW = "overview";
+    public static final String Q_BY_TYPE = "by_type";
+    public static final String Q_BY_COUNTY = "by_county";
+    public static final String Q_BY_TOWN = "by_town";
+    public static final String Q_RISK = "risk";
+    public static final String Q_CULVERT = "culvert";
+    public static final String Q_GULLY = "gully";
+    public static final String Q_LIST_OBJECTS = "list_objects";
+    public static final String Q_LIST_WATERSHEDS = "list_watersheds";
+
+    public static final Set<String> SUPPORTED_DATA_QUERIES = Set.of(
+            Q_OVERVIEW, Q_BY_TYPE, Q_BY_COUNTY, Q_BY_TOWN, Q_RISK, Q_CULVERT, Q_GULLY, Q_LIST_OBJECTS, Q_LIST_WATERSHEDS);
+
+    /** 关键指标键（sh_report_metric.metric_key，抽取与跨章校验见 ShReportMetricService） */
+    public static final String KEY_OBJECT_COUNT = "OBJECT_COUNT";
+    public static final String KEY_POPULATION = "POPULATION";
+    public static final String KEY_AREA = "AREA";
+    public static final String KEY_RIVER_LENGTH = "RIVER_LENGTH";
+    public static final String KEY_SLOPE = "SLOPE";
+    public static final String KEY_ELEVATION = "ELEVATION";
 
     public static String chapterName(int chapterNo) {
         if (chapterNo < 1 || chapterNo > CHAPTER_NAMES.length) {
@@ -81,11 +104,21 @@ public final class ShReportConstants {
          * @return Markdown 文本（永不为空）
          */
         public String buildPacket(int chapterNo, String lybm, String lymc) {
+            return buildPacket(chapterNo, lybm, lymc, false);
+        }
+
+        /**
+         * @param hasHistoryMaterial 第 5 章是否已有用户上传的历史灾害资料
+         */
+        public String buildPacket(int chapterNo, String lybm, String lymc, boolean hasHistoryMaterial) {
             String name = (lymc == null || lymc.isEmpty()) ? lybm : lymc;
             StringBuilder sb = new StringBuilder();
             sb.append("【").append(name).append(" 实测数据包】\n");
-            sb.append("以下数据来自调查数据库，是本章唯一允许使用的事实数据来源；");
-            sb.append("包中没有的数据一律写「暂无调查数据」，严禁编造或引用其他流域数字。\n\n");
+            sb.append("以下数据来自调查数据库，是结构化事实的主要来源；用户上传资料为补充/修正，使用规则见补充资料");
+            if (chapterNo == 5) {
+                sb.append("（第5章历史灾害见「历史灾害记录」入参）");
+            }
+            sb.append("。包中与资料中都没有的数据一律写「暂无调查数据」，严禁编造或引用其他流域数字。\n\n");
 
             boolean any = false;
             switch (chapterNo) {
@@ -119,7 +152,11 @@ public final class ShReportConstants {
                     break;
                 case 5:
                     any |= appendSection(sb, "一、本流域防治对象背景数据", safe(() -> pgMapper.selectObjectTotals(lybm)));
-                    sb.append("二、历史灾害记录：暂无调查数据，不得虚构具体年份、场次与损失数字。\n\n");
+                    if (hasHistoryMaterial) {
+                        sb.append("二、历史灾害记录：调查库无结构化台账；请依据用户上传资料（历史灾害记录入参）撰写，引用时标明来源文件名，禁止编造资料中没有的数字。\n\n");
+                    } else {
+                        sb.append("二、历史灾害记录：暂无调查数据，不得虚构具体年份、场次与损失数字。\n\n");
+                    }
                     any = true;
                     break;
                 case 6:

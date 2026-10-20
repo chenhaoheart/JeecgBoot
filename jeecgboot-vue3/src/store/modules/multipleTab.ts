@@ -16,7 +16,6 @@ import { MULTIPLE_TABS_KEY } from '/@/enums/cacheEnum';
 import projectSetting from '/@/settings/projectSetting';
 import { useUserStore } from '/@/store/modules/user';
 import type { LocationQueryRaw, RouteParamsRaw } from 'vue-router';
-import { getMenus } from '/@/router/menus';
 
 export interface MultipleTabState {
   cacheTabList: Set<string>;
@@ -65,26 +64,6 @@ const closeTabContainCurrentRoute = (router, pathList) => {
   }
   return false;
 };
-/**
- * 2025-05-08
- * liaozhiyang
- * 【issues/8216】online生成的菜单sql 自动带上组件名称
- * */
-function getMatchingRoute(menus, path) {
-  for (let i = 0, len = menus.length; i < len; i++) {
-    const item = menus[i];
-    if (item.path === path && !item.redirect && !item.paramPath) {
-      return item;
-    } else if (item.children?.length) {
-      const result = getMatchingRoute(item.children, path);
-      if (result) {
-        return result;
-      }
-    }
-  }
-  return null;
-}
-
 const cacheTab = projectSetting.multiTabsSetting.cache;
 
 export const useMultipleTabStore = defineStore('app-multiple-tab', {
@@ -115,27 +94,12 @@ export const useMultipleTabStore = defineStore('app-multiple-tab', {
      */
     async updateCacheTab() {
       const cacheMap: Set<string> = new Set();
-      const allMenus = await getMenus();
       for (const tab of this.tabList) {
         const item = getRawRoute(tab);
         // Ignore the cache
         const needCache = !item.meta?.ignoreKeepAlive;
         if (!needCache) {
           continue;
-        }
-        // 代码逻辑说明: 【QQYUN-12348】online生成的菜单sql 自动带上组件名称
-        if (
-          ['OnlineAutoList', 'DefaultOnlineList', 'CgformErpList', 'OnlCgformInnerTableList', 'OnlCgformTabList', 'OnlCgReportList', 'GraphreportAutoChart', 'AutoDesformDataList'].includes(item.name as string) &&
-          allMenus?.length
-        ) {
-          // update-begin--author:zhang--date:20260713--for：【性能】优先读 tab 自身的 meta.keepAlive，兼容路由配置驱动缓存（如 desformRouter.ts 设了 keepAlive:true）
-          const route = getMatchingRoute(allMenus, item.path);
-          if (item.meta?.keepAlive ?? route?.meta?.keepAlive) {
-            // 如果keepAlive为true，则添加到缓存中
-          } else {
-            continue;
-          }
-          // update-end--author:zhang--date:20260713--for：【性能】优先读 tab 自身的 meta.keepAlive，兼容路由配置驱动缓存（如 desformRouter.ts 设了 keepAlive:true）
         }
         const name = item.name as string;
         cacheMap.add(name);

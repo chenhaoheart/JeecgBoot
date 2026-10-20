@@ -25,6 +25,12 @@ enum Api {
   graphSchema = '/sh/report/graph/schema',
   graphTrace = '/sh/report/graph/trace',
   graphDemo = '/sh/report/graph/demo',
+  materialUpload = '/sh/report/material/upload',
+  materialList = '/sh/report/material/list',
+  materialUpdate = '/sh/report/material/update',
+  materialDelete = '/sh/report/material/delete',
+  materialReparse = '/sh/report/material/reparse',
+  materialPreview = '/sh/report/material/preview',
 }
 
 export interface IChapter {
@@ -42,9 +48,32 @@ export interface IChapter {
   failReason?: string;
   /** 生成所用流程版本（流程名@设计更新时间） */
   flowVer?: string;
+  /** 本章引用的上传资料清单（文件名@更新时间，分号分隔） */
+  materialVer?: string;
   /** 本章从开始生成到最终完成的耗时（毫秒），未记录时为空 */
   genCostMs?: number | null;
   updateTime: string;
+}
+
+export interface IMaterial {
+  id: number;
+  lybm?: string;
+  lymc?: string;
+  batchNo?: string;
+  fileName: string;
+  fileType?: string;
+  ext?: string;
+  fileSize?: number;
+  category?: string;
+  chapterNos?: string;
+  autoTagged?: number;
+  dataOverride?: number;
+  parseStatus?: string;
+  contentSummary?: string;
+  failReason?: string;
+  createBy?: string;
+  createTime?: string;
+  updateTime?: string;
 }
 
 export interface IWatershed {
@@ -117,6 +146,7 @@ function normalizeChapter(r: any): IChapter {
     auditNote: r.auditNote ?? r.audit_note ?? '',
     failReason: r.failReason ?? r.fail_reason ?? '',
     flowVer: r.flowVer ?? r.flow_ver ?? '',
+    materialVer: r.materialVer ?? r.material_ver ?? '',
     // PG 会把未加引号的别名 genCostMs 折成 gencostms，三种键都认
     genCostMs: r.genCostMs ?? r.gen_cost_ms ?? r.gencostms ?? null,
     updateTime: r.updateTime ?? r.update_time ?? '',
@@ -172,7 +202,17 @@ export const createConversation = () =>
 
 /** 获取会话上下文（用于切会话/刷新后恢复流域绑定与模型选择，含 token 用量） */
 export const getContext = (conversationId: string) =>
-  defHttp.get<{ batchNo?: string; lybm?: string; lymc?: string; wsmc?: string; modelId?: string; modelLabel?: string; usage?: IUsage }>({
+  defHttp.get<{
+    batchNo?: string;
+    lybm?: string;
+    lymc?: string;
+    wsmc?: string;
+    modelId?: string;
+    modelLabel?: string;
+    usage?: IUsage;
+    materials?: IMaterial[];
+    materialPending?: number;
+  }>({
     url: Api.context,
     params: { conversationId },
   });
@@ -368,3 +408,37 @@ export const runGraphDemo = (scenario: string): Promise<ReadableStream<Uint8Arra
     return r.body;
   });
 };
+
+export const materialAccept = '.xlsx,.xls,.pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png,.webp,.bmp';
+
+export const listMaterials = (conversationId?: string, lybm?: string, batchNo?: string) =>
+  defHttp.get<IMaterial[]>({
+    url: Api.materialList,
+    params: { conversationId, lybm, batchNo },
+  });
+
+export const uploadMaterial = (file: File, conversationId: string) =>
+  defHttp.uploadFile<IMaterial>(
+    { url: Api.materialUpload },
+    { file, name: 'file', filename: file.name, data: { conversationId } }
+  );
+
+export const updateMaterial = (params: {
+  id: number;
+  conversationId?: string;
+  category?: string;
+  chapterNos?: string;
+  dataOverride?: boolean;
+}) => defHttp.post({ url: Api.materialUpdate, params });
+
+export const deleteMaterial = (id: number, conversationId?: string) =>
+  defHttp.post({ url: Api.materialDelete, params: { id, conversationId } });
+
+export const reparseMaterial = (id: number, conversationId?: string) =>
+  defHttp.post({ url: Api.materialReparse, params: { id, conversationId } });
+
+export const previewMaterialBlob = (id: number, conversationId?: string) =>
+  defHttp.get(
+    { url: Api.materialPreview, params: { id, conversationId }, responseType: 'blob' },
+    { isTransformResponse: false }
+  );
