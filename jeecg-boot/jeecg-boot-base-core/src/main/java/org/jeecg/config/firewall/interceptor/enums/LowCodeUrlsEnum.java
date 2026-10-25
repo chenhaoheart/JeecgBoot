@@ -49,20 +49,7 @@ public enum LowCodeUrlsEnum {
     BIG_SCREEN_DB_ADD("/bigscreen/bigScreenDb/add", "大屏数据源新增"),
     BIG_SCREEN_DB_EDIT("/bigscreen/bigScreenDb/edit", "大屏数据源编辑"),
     BIG_SCREEN_DB_DEL("/bigscreen/bigScreenDb/delete", "大屏数据源删除"),
-    BIG_SCREEN_DB_TEST_CONNECTION("/bigscreen/bigScreenDb/testConnection", "大屏数据源连接测试"),
-//    BIG_SCREEN_SAVE("/bigscreen/visual/save", "大屏新增"),
-//    BIG_SCREEN_EDIT("/bigscreen/visual/update", "大屏编辑"),
-//    BIG_SCREEN_COPY("/bigscreen/visual/copy", "大屏复制"),
-//    BIG_SCREEN_REMOVE("/bigscreen/visual/remove", "大屏移除"),
-//    BIG_SCREEN_DEL("/bigscreen/visual/deleteById", "大屏删除"),
-
-    /**
-     * 仪表盘配置请求
-     */
-    DRAG_DB_ADD("/drag/onlDragDataSource/add", "仪表盘数据源新增"),
-    DRAG_DB_TEST_CONNECTION("/drag/onlDragDataSource/testConnection", "仪表盘数据源连接测试"),
-    DRAG_PARSE_SQL("/drag/onlDragDatasetHead/queryFieldBySql", "仪表盘数据集SQL解析"),
-    DRAG_DATASET_ADD("/drag/onlDragDatasetHead/add", "仪表盘数据集新增");
+    BIG_SCREEN_DB_TEST_CONNECTION("/bigscreen/bigScreenDb/testConnection", "大屏数据源连接测试");
 
     /**
      * 其他配置请求

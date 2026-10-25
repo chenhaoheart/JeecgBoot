@@ -569,8 +569,6 @@ public class SysDictController {
 //		Set keys21 = redisTemplate.keys(CacheConstant.SYS_DICT_TABLE_BY_KEYS_CACHE + "*");
 //		Set keys3 = redisTemplate.keys(CacheConstant.SYS_DEPARTS_CACHE + "*");
 //		Set keys4 = redisTemplate.keys(CacheConstant.SYS_DEPART_IDS_CACHE + "*");
-//		Set keys5 = redisTemplate.keys( "jmreport:cache:dict*");
-//		Set keys6 = redisTemplate.keys( "jmreport:cache:dictTable*");
 //		redisTemplate.delete(keys);
 //		redisTemplate.delete(keys2);
 //		redisTemplate.delete(keys21);
@@ -587,8 +585,6 @@ public class SysDictController {
 		redisUtil.removeAll(CacheConstant.SYS_DICT_TABLE_BY_KEYS_CACHE);
 		redisUtil.removeAll(CacheConstant.SYS_DEPARTS_CACHE);
 		redisUtil.removeAll(CacheConstant.SYS_DEPART_IDS_CACHE);
-		redisUtil.removeAll("jmreport:cache:dict");
-		redisUtil.removeAll("jmreport:cache:dictTable");
 		
 		// 清除当前用户的授权缓存信息
 		Subject currentUser = SecurityUtils.getSubject();

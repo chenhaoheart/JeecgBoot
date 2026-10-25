@@ -56,13 +56,7 @@ public class ShiroConfig {
 		// 系统内置静态页面
 		"/generic/**", "/view/userlist.html",
 		// 开源Demo大屏模板
-		"/bigscreen/template1/**", "/bigscreen/template2/**",
-		// 积木报表
-		"/jmreport/desreport_/**",
-		// 积木BI仪表盘、大屏
-		"/drag/favicon.ico", "/drag/lib/**", "/drag/list/**",
-		// Chat2BI
-        "/chat2bi/**", "/jimu/chat2bi/css/**", "/jimu/chat2bi/js/**","/jimu/chat2bi/libs/**", "/jimu/chat2bi/logo.png"
+		"/bigscreen/template1/**", "/bigscreen/template2/**"
 	};
 	//update-end---author:scott ---date:2026-08-24  for：【issues/9840】静态资源按目录放行，避免业务接口通过伪造文件后缀绕过JWT-----------
 
@@ -141,28 +135,6 @@ public class ShiroConfig {
 
         filterChainDefinitionMap.put("/sys/annountCement/show/**", "anon");
 
-        //Chat2BI分享页（页面自带独立登录）
-        filterChainDefinitionMap.put("/jimu/chat2bi/chat", "anon");
-
-        //积木报表排除
-        filterChainDefinitionMap.put("/jmreport/**", "anon");
-        
-        //积木BI大屏和仪表盘排除
-        filterChainDefinitionMap.put("/drag/view", "anon");
-        filterChainDefinitionMap.put("/drag/page/queryById", "anon");
-        filterChainDefinitionMap.put("/drag/page/addVisitsNumber", "anon");
-        filterChainDefinitionMap.put("/drag/page/queryTemplateList", "anon");
-        filterChainDefinitionMap.put("/drag/share/view/**", "anon");
-        filterChainDefinitionMap.put("/drag/onlDragDatasetHead/getAllChartData", "anon");
-        filterChainDefinitionMap.put("/drag/onlDragDatasetHead/getTotalData", "anon");
-        filterChainDefinitionMap.put("/drag/onlDragDatasetHead/getMapDataByCode", "anon");
-        filterChainDefinitionMap.put("/drag/onlDragDatasetHead/getTotalDataByCompId", "anon");
-        filterChainDefinitionMap.put("/drag/mock/json/**", "anon");
-        filterChainDefinitionMap.put("/drag/onlDragDatasetHead/getDictByCodes", "anon");
-        filterChainDefinitionMap.put("/drag/onlDragDatasetHead/queryAllById", "anon");
-        filterChainDefinitionMap.put("/jimubi/view", "anon");
-        filterChainDefinitionMap.put("/jimubi/share/view/**", "anon");
-
         //大屏模板例子
         filterChainDefinitionMap.put("/test/bigScreen/**", "anon");
         //filterChainDefinitionMap.put("/test/jeecgDemo/rabbitMqClientTest/**", "anon"); //MQ测试
@@ -173,10 +145,6 @@ public class ShiroConfig {
         filterChainDefinitionMap.put("/websocket/**", "anon");//系统通知和公告
         filterChainDefinitionMap.put("/newsWebsocket/**", "anon");//CMS模块
         filterChainDefinitionMap.put("/vxeSocket/**", "anon");//JVxeTable无痕刷新示例
-        //App vue3版本查询版本接口
-        filterChainDefinitionMap.put("/sys/version/app3version", "anon");
-        //仪表盘（按钮通信）
-        filterChainDefinitionMap.put("/dragChannelSocket/**","anon");
         //App vue3版本查询版本接口
         filterChainDefinitionMap.put("/sys/version/app3version", "anon");
 
@@ -241,15 +209,6 @@ public class ShiroConfig {
         registration.addUrlPatterns("/airag/chat/receive/**");
         // 添加SSE接口的异步支持
         registration.addUrlPatterns("/airag/extData/evaluator/debug");
-        registration.addUrlPatterns("/drag/onlDragDatasetHead/generateChartSse");
-        registration.addUrlPatterns("/drag/onlDragDatasetHead/updateChartOptSse");
-        registration.addUrlPatterns("/drag/onlDragDatasetHead/generateSqlSse");
-        //大屏AI生成/修改/讨论 SSE 接口的异步支持
-        registration.addUrlPatterns("/drag/page/aiGenerateScreenSse");
-        registration.addUrlPatterns("/drag/page/aiModifyScreenSse");
-        registration.addUrlPatterns("/drag/page/aiDiscussScreenSse");
-        registration.addUrlPatterns("/jmreport/ai/assistant/*");
-        registration.addUrlPatterns("/jimu/chat2bi/table-meta/syncTables");
         // 山洪报告 AI 助手 SSE（Shiro 默认不支持异步，须显式登记）
         registration.addUrlPatterns("/sh/report/agent/chat/send");
         registration.addUrlPatterns("/sh/report/agent/outline/confirm");

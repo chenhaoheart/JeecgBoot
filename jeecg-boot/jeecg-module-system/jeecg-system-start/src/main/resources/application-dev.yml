@@ -183,8 +183,6 @@ mybatis-plus:
     # 返回类型为Map,显示null对应的字段
     call-setters-on-nulls: true
 #jeecg专用配置
-minidao:
-  base-package: org.jeecg.modules.jmreport.*,org.jeecg.modules.drag.*,org.jeecg.modules.chat2bi.*
 jeecg:
   # 自定义资源请求前缀（js、css等解决nginx转发问题）
   custom-resource-prefix-path:
@@ -298,7 +296,7 @@ jeecg:
     #webapp文件路径
     webapp: /opt/webapp
   shiro:
-    excludeUrls: /test/jeecgDemo/demo3,/test/jeecgDemo/redisDemo/**,/bigscreen/category/**,/bigscreen/visual/**,/bigscreen/map/**,/jmreport/bigscreen2/**,/sh/report/map/file/preview
+    excludeUrls: /test/jeecgDemo/demo3,/test/jeecgDemo/redisDemo/**,/bigscreen/category/**,/bigscreen/visual/**,/bigscreen/map/**,/sh/report/map/file/preview
   # 短信发送方式 aliyun阿里云短信 tencent腾讯云短信
   smsSendType: aliyun
   #阿里云oss存储和大鱼短信秘钥配置
@@ -337,42 +335,6 @@ jeecg:
     minio_name: ??
     minio_pass: ??
     bucketName: otatest
-  #大屏报表参数设置
-  jmreport:
-    #多租户模式，默认值为空(created:按照创建人隔离、tenant:按照租户隔离)
-    saasMode: 
-    # 签名密钥串(前后端要一致，正式发布请自行修改)
-    signatureSecret: dd05f1c54d63749eda95f9fa6d49v442a
-    ai:
-      # OpenAI 兼容 base 地址（必填）；与 airag 默认模型「火山方舟-agent」一致
-      base-url: https://ark.cn-beijing.volces.com/api/plan/v3
-      # API Key（必填，留空则 AI 不可用）
-      api-key: ??
-      # 模型名
-      model: ark-code-latest
-      temperature: 0.6
-      # 单次生成最大 token 数(传给大模型的 max_tokens)
-      max-tokens: 4096
-      # AI自动建表功（安全警告: 此功能会直接操作数据库DDL/DML，生产环境请勿启用）
-      autoTableEnabled: true
-    # 平台上线安全配置
-    firewall:
-      # 数据源安全 (开启后，不允许使用平台数据源、SQL解析加签并且不允许查询数据库)
-      dataSourceSafe: false
-      # SQL解析安全 false: 数据库解析(默认,稳定性好) true: jsqlparser解析(不走数据库,安全级别高) v2.2.1+新增
-      sqlParseSafe: true
-      # 低代码开发模式（dev:开发模式，prod:发布模式—关闭在线报表设计功能，分配角色admin、lowdeveloper可放开限制）
-      lowCodeMode: dev
-      # sql注入检查级别（strict:严格, basic:简单校验, none:不校验）
-      sqlInjectionLevel: basic
-      # 数据源重试连接的次数，默认10，空或者0不限制次数(2.3.1+)
-      numberOfRetries: 10
-    # 高德地图Api配置
-    gao-de-api:
-      # 应用key
-      api-key: ??
-      # 应用秘钥
-      secret-key: ??
   #xxl-job配置
   xxljob:
     enabled: false
