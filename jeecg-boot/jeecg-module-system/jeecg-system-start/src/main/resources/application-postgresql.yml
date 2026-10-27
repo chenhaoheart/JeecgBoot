@@ -106,6 +106,8 @@ spring:
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+      # minidao 仅作SQL防火墙解析库保留(项目已无MiniDao接口)，排除其DAO扫描，否则启动报 minidao.base-package is not set
+      - org.jeecgframework.minidao.auto.MinidaoAutoConfiguration
   datasource:
     druid:
       stat-view-servlet:

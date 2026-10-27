@@ -6,6 +6,10 @@ spring:
   main:
     # 启动加速 (建议开发环境)
     lazy-initialization: true
+  # minidao 仅作为 SQL注入防火墙 的SQL解析库保留(项目中已无 MiniDao 接口)，
+  # 排除其DAO扫描自动装配，避免启动时报 minidao.base-package is not set
+  autoconfigure:
+    exclude: org.jeecgframework.minidao.auto.MinidaoAutoConfiguration
   application:
     name: jeecg-system
   config:
