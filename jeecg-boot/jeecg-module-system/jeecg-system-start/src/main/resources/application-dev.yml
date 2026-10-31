@@ -452,7 +452,7 @@ shreport:
     llm-wait-seconds: 600
   map:
     # 天地图 WMTS tk（与旧一张图工程同一把开发 key，生产请换成自己的）
-    tianditu-key: ''
+    tianditu-key: 'fced2cd1905b5b42d4167603c6ba32e2'
     # 默认视野：中国全图
     center-lat: 35.6
     center-lng: 104.2

@@ -184,13 +184,16 @@ public class LLMConsts {
     //update-begin---author:claude ---date:2026-08-07  for：Kimi k3 等模型采样参数需固定(temperature=1/topP=0.95/presencePenalty=0/frequencyPenalty=0)，传其他值报 "invalid temperature: only 1 is allowed for this model"-----------
     /**
      * 采样参数需固定的模型集合。
-     * 这类模型（如 Kimi k3）请求中 temperature 不为 1 就直接 400 拒绝：
+     * 这类模型（如 Kimi k3、智谱 GLM-4.7）请求中 temperature 不为 1 就直接 400 拒绝：
      * {"error":{"message":"invalid temperature: only 1 is allowed for this model"}}
      * 且官方推荐固定 temperature=1、topP=0.95、presencePenalty=0、frequencyPenalty=0。
      * 后续新增同类模型时在此追加。
      */
     public static final Set<String> FIXED_SAMPLING_PARAM_MODELS = new HashSet<>(Arrays.asList(
-            "k3"
+            "k3",
+            // 智谱 GLM-4.7 请求中 temperature 不为 1 直接 400 拒绝：
+            // {"code":"InvalidParameter","message":"`temperature` only 1 is allowed for this model"}
+            "glm-4.7"
     ));
 
     /**

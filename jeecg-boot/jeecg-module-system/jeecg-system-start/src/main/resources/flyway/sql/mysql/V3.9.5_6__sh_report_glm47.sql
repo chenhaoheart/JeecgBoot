@@ -4,7 +4,7 @@ UPDATE `airag_model`
 SET `name` = '智谱 GLM-4.7',
     `provider` = 'OPENAI',
     `model_name` = 'glm-4.7',
-    `credential` = '{"apiKey":"请填写智谱APIKey"}',
+    `credential` = '{"apiKey":"7e52c68ded5540a5accbc6c7108cf9d7.aKxpcPWFo6XLYEBh"}',
     `base_url` = 'https://open.bigmodel.cn/api/paas/v4',
     `model_params` = '{"temperature":0.3,"topP":0.95,"maxTokens":4096,"timeout":120}',
     `activate_flag` = 1,
