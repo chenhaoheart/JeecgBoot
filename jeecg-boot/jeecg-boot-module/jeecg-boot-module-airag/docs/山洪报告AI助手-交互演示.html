@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>山洪灾害防御报告 AI 助手 · 交互式业务演示</title>
+<style>
+:root{
+  --dark:#0B2B3A; --dark2:#0F3A4E; --primary:#0E5468; --primary-d:#093A4A;
+  --tint:#E8F2F5; --tint2:#F4F9FB; --accent:#E88B1A; --accent-t:#FDF3E3;
+  --red:#C0504D; --red-t:#FBEDEA; --green:#2E7D52; --green-t:#E9F5EE;
+  --blue:#2F6DA3; --muted:#5F7683; --line:#D5E2E8; --text:#1B2B33;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:"微软雅黑","Microsoft YaHei",sans-serif}
+html,body{height:100%;overflow:hidden;background:var(--dark)}
+#deck{position:fixed;inset:0}
+.slide{position:absolute;inset:0;display:none;flex-direction:column;padding:44px 64px 90px;background:#fff;overflow-y:auto}
+.slide.active{display:flex;animation:fadein .45s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.slide.dark{background:var(--dark);color:#fff}
+.kicker{font-size:13px;letter-spacing:5px;color:#7FB3C4;margin-bottom:14px}
+h1.big{font-size:52px;font-weight:700;line-height:1.2}
+.sub{font-size:20px;color:#BFE0EA;margin-top:16px}
+.ptitle{font-size:30px;font-weight:700;color:var(--primary-d)}
+.psub{font-size:14px;color:var(--muted);margin:6px 0 4px}
+.prule{height:1px;background:var(--line);margin:14px 0 22px}
+.hint{display:inline-flex;align-items:center;gap:8px;background:var(--accent-t);border:1px solid #EAD9B8;color:#9A6A12;
+  font-size:13px;font-weight:600;padding:7px 14px;border-radius:20px;margin-bottom:16px;width:fit-content}
+.hint::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+/* nav */
+#nav{position:fixed;left:0;right:0;bottom:0;height:64px;display:flex;align-items:center;gap:14px;
+  padding:0 28px;background:rgba(9,42,58,.92);backdrop-filter:blur(6px);z-index:50;color:#BFE0EA}
+#nav button{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:14px;cursor:pointer}
+#nav button:hover{background:#15709A}
+#nav button:disabled{opacity:.35;cursor:default}
+#dots{display:flex;gap:8px;flex:1;justify-content:center}
+#dots i{width:10px;height:10px;border-radius:50%;background:#2A5D72;cursor:pointer;transition:.2s}
+#dots i.on{background:var(--accent);transform:scale(1.3)}
+#counter{font-size:13px;min-width:64px;text-align:right}
+/* generic cards */
+.grid{display:grid;gap:18px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;box-shadow:0 3px 10px rgba(11,43,58,.08)}
+.card h3{font-size:17px;color:var(--primary-d);margin-bottom:8px}
+.card p{font-size:13.5px;color:#3D525C;line-height:1.7}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px}
+/* S1 cover waves */
+.wave{position:absolute;border-radius:50%}
+/* pipeline */
+.pipe{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pnode{background:var(--tint);border:1.5px solid #AECDD8;color:var(--primary-d);border-radius:10px;
+  padding:8px 12px;font-size:12.5px;font-weight:700;text-align:center;min-width:86px;transition:.3s}
+.pnode small{display:block;font-weight:400;font-size:10px;color:var(--muted);margin-top:2px}
+.pnode.run{background:#DFF0FB;border-color:var(--blue);box-shadow:0 0 0 4px rgba(47,109,163,.18);animation:pulse 1.2s infinite}
+.pnode.done{background:var(--green-t);border-color:var(--green);color:var(--green)}
+.pnode.fail{background:var(--red-t);border-color:var(--red);color:var(--red)}
+.parr{color:var(--accent);font-weight:700;font-size:15px}
+/* workbench mock */
+.wb{display:grid;grid-template-columns:170px 1fr 300px;gap:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  box-shadow:0 6px 24px rgba(11,43,58,.12);height:560px;background:#fff}
+.wb-side{background:#E9F1F5;padding:14px 10px;border-right:1px solid var(--line);font-size:12.5px}
+.wb-side .nsess{background:var(--primary);color:#fff;text-align:center;border-radius:8px;padding:8px;font-weight:700;cursor:pointer;font-size:13px}
+.sess{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:10px;cursor:pointer}
+.sess.on{border-color:var(--primary);box-shadow:0 0 0 2px rgba(14,84,104,.15)}
+.sess b{display:block;font-size:12.5px;color:var(--primary-d)}
+.sess span{font-size:10.5px;color:var(--muted)}
+.wb-chat{display:flex;flex-direction:column;border-right:1px solid var(--line);min-width:0}
+.chat-log{flex:1;overflow-y:auto;padding:16px}
+.msg{max-width:82%;border-radius:12px;padding:10px 14px;font-size:13px;line-height:1.75;margin-bottom:12px;white-space:pre-wrap;word-break:break-word}
+.msg.user{background:var(--primary);color:#fff;margin-left:auto;border-bottom-right-radius:4px}
+.msg.ai{background:var(--tint2);border:1px solid var(--line);color:var(--text);border-bottom-left-radius:4px}
+.msg.sys{background:transparent;border:1px dashed #AECDD8;color:var(--primary);font-size:12px;text-align:center;max-width:100%}
+.cursor{display:inline-block;width:8px;height:15px;background:var(--primary);vertical-align:-2px;animation:pulse 1s infinite}
+.quick{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.quick button{background:#fff;border:1px solid #AECDD8;color:var(--primary);border-radius:16px;padding:6px 14px;font-size:12px;cursor:pointer}
+.quick button:hover{background:var(--tint)}
+.composer{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line);background:var(--tint2)}
+.composer input{flex:1;border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:13px}
+.composer button{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:0 18px;font-size:13px;cursor:pointer}
+.composer button.stop{background:var(--red)}
+.wb-chap{padding:14px 12px;overflow-y:auto;background:var(--tint2)}
+.chip7{display:flex;gap:4px;margin:8px 0 12px}
+.chip7 i{flex:1;height:8px;border-radius:4px;background:#D8E4EA;transition:.3s}
+.chip7 i.gen{background:var(--blue);animation:pulse 1.2s infinite}
+.chip7 i.wait{background:#E7C46B}
+.chip7 i.pass{background:var(--green)}
+.chip7 i.fail{background:var(--red)}
+.chap{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:12px}
+.chap b{font-size:12.5px;color:var(--primary-d)}
+.st{float:right;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px}
+.st.gen{color:var(--blue);background:#DFF0FB}.st.wait{color:#8a6a12;background:#FAF0D2}
+.st.pass{color:var(--green);background:var(--green-t)}.st.fail{color:var(--red);background:var(--red-t)}
+/* progress lines */
+.pline{font-size:12px;color:var(--primary-d);padding:3px 0}
+/* modal */
+.mask{position:absolute;inset:0;background:rgba(9,42,58,.45);display:none;align-items:center;justify-content:center;z-index:20;border-radius:14px}
+.mask.show{display:flex;animation:fadein .25s}
+.modal{background:#fff;border-radius:14px;padding:22px 24px;box-shadow:0 14px 44px rgba(0,0,0,.3);max-height:88%;overflow-y:auto}
+.modal h3{color:var(--primary-d);font-size:17px;margin-bottom:12px}
+.btn{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:13.5px;cursor:pointer}
+.btn.amber{background:var(--accent)}.btn.ghost{background:#E9F1F5;color:var(--primary-d)}
+.btn.red{background:var(--red)}.btn.sm{padding:5px 12px;font-size:12px;border-radius:7px}
+.btn:disabled{opacity:.4;cursor:default}
+/* outline modal */
+.ol-chap{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:10px}
+.ol-chap summary{cursor:pointer;font-weight:700;font-size:13.5px;color:var(--primary-d)}
+.ol-secs{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;margin:8px 0}
+.ol-secs label{font-size:12.5px;color:#3D525C;display:flex;gap:6px;align-items:center}
+.ol-note{width:100%;border:1px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12px;margin-top:4px}
+/* map */
+.mapwrap{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;height:560px;
+  background:linear-gradient(160deg,#DCE9DF 0%,#CBDEE9 55%,#BFD6E4 100%);box-shadow:0 6px 24px rgba(11,43,58,.12)}
+.mappanel{position:absolute;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:12.5px;box-shadow:0 3px 12px rgba(11,43,58,.12)}
+.mappanel h4{font-size:13px;color:var(--primary-d);margin-bottom:8px}
+.lyr{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#3D525C;margin:5px 0;cursor:pointer}
+.ws-poly{cursor:pointer;transition:.25s}
+.ws-poly:hover{filter:brightness(1.08)}
+.ws-poly.sel{stroke:var(--accent)!important;stroke-width:3!important}
+.hz{cursor:pointer}
+.popup{position:absolute;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:12px;
+  box-shadow:0 6px 20px rgba(0,0,0,.2);display:none;z-index:5;max-width:230px}
+.popup b{color:var(--primary-d)}
+/* toast */
+#toast{position:fixed;top:26px;left:50%;transform:translateX(-50%) translateY(-80px);background:var(--dark2);color:#fff;
+  padding:12px 26px;border-radius:10px;font-size:14px;z-index:99;transition:.35s;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+#toast.show{transform:translateX(-50%) translateY(0)}
+/* audit */
+.audit-grid{display:grid;grid-template-columns:300px 1fr;gap:18px;flex:1;min-height:0}
+.alist{overflow-y:auto}
+.aitem{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 14px;margin-bottom:9px;cursor:pointer;font-size:13px}
+.aitem.on{border-color:var(--primary);box-shadow:0 0 0 2px rgba(14,84,104,.15)}
+.adetail{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 24px;overflow-y:auto}
+.adetail .body{background:var(--tint2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:12.5px;line-height:1.9;color:#33454F;margin:12px 0;white-space:pre-wrap}
+.opinion{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:12.5px;margin-top:10px}
+.diff{font-size:12.5px;line-height:2;border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-top:10px}
+.diff .add{background:var(--green-t);color:var(--green);display:block;padding:0 8px;border-radius:5px}
+.diff .del{background:var(--red-t);color:var(--red);display:block;padding:0 8px;border-radius:5px;text-decoration:line-through}
+.diff .same{color:#5F7683;display:block;padding:0 8px}
+table.biz{width:100%;border-collapse:collapse;font-size:13px}
+table.biz th{background:var(--primary);color:#fff;padding:9px 12px;text-align:left;font-size:13px}
+table.biz td{padding:9px 12px;border-bottom:1px solid var(--line);color:#2B4653}
+table.biz tr:nth-child(even) td{background:var(--tint2)}
+/* defense */
+.defense{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.stepflow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.stepflow .st-item{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 16px;font-size:13px;box-shadow:0 3px 10px rgba(11,43,58,.07)}
+.stepflow .st-item b{display:block;color:var(--primary-d);font-size:13.5px}
+.stepflow .st-item span{font-size:11px;color:var(--muted)}
+/* word mock */
+.word{background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 28px rgba(11,43,58,.16);padding:34px 40px;font-size:12px;color:#222;max-width:430px}
+.word h5{font-family:"方正小标宋简体","SimSun",serif;font-size:19px;text-align:center;font-weight:700;margin-bottom:20px}
+.word .toc{border-bottom:1px dashed #bbb;padding-bottom:10px;margin-bottom:14px;color:#444}
+.word p{text-indent:2em;line-height:2.1;font-family:"仿宋_GB2312","FangSong",serif;font-size:12.5px}
+.word .h6{font-family:"黑体","SimHei",sans-serif;font-size:14px;font-weight:700;margin:10px 0 4px}
+.statcards{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:36px}
+.statcard{background:var(--dark2);border:1px solid #2A5D72;border-radius:14px;padding:24px;text-align:center}
+.statcard b{display:block;font-size:34px;color:var(--accent)}
+.statcard span{font-size:13px;color:#BFE0EA;line-height:1.6;display:block;margin-top:8px}
+.closing-tag{font-size:17px;color:#BFE0EA;margin-top:14px}
+.demo-link{color:var(--accent);cursor:pointer;text-decoration:underline}
+</style>
+</head>
+<body>
+<div id="deck">
+
+<!-- ============ S0 封面 ============ -->
+<section class="slide dark" style="justify-content:center;position:relative;overflow:hidden">
+  <div class="wave" style="width:540px;height:540px;right:-140px;bottom:-200px;background:#11475C;opacity:.8"></div>
+  <div class="wave" style="width:380px;height:380px;right:40px;bottom:-110px;background:#16607B;opacity:.8"></div>
+  <div class="wave" style="width:230px;height:230px;right:150px;bottom:-30px;background:var(--accent);opacity:.9"></div>
+  <div class="kicker">交互式业务演示 · INTERACTIVE DEMO</div>
+  <h1 class="big">山洪灾害防御报告<br>AI 助手</h1>
+  <div class="sub">让每份调查评价报告，都从一次对话开始</div>
+  <div style="width:150px;height:3px;background:var(--accent);margin:34px 0"></div>
+  <div style="font-size:16px;line-height:2.2;color:#E6F2F7">
+    对话生成 7 章报告初稿 · 素材资料参与写作 · 自动质检 + 人工审核 · 公文级 Word 导出
+  </div>
+  <div style="margin-top:44px;font-size:14px;color:#7FB3C4">
+    本演示稿包含 <b style="color:var(--accent)">4 个可点击操作的页面原型</b>：对话工作台、大纲确认、GIS 一张图、章节审核
+  </div>
+  <div style="margin-top:14px;font-size:13px;color:#6E97A8">使用 ← → 方向键或底部按钮翻页</div>
+</section>
+
+<!-- ============ S1 痛点 ============ -->
+<section class="slide">
+  <div class="ptitle">业务背景：报告编制的四大痛点</div>
+  <div class="psub">每个山洪沟小流域都需编制《山洪灾害风险隐患调查评价报告》，标准 7 章体例</div>
+  <div class="prule"></div>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card"><h3>① 编写周期长</h3><p>单份报告 7 章，逐流域人工编写需数周；多流域批量编制时人力严重不足。</p><p style="margin-top:10px"><span class="tag" style="background:var(--red-t);color:var(--red)">数周 / 份</span></p></div>
+    <div class="card"><h3>② 数字易矛盾</h3><p>面积、河长、人口等关键数字在各章反复引用，人工誊抄容易前后不一致。</p><p style="margin-top:10px"><span class="tag" style="background:var(--red-t);color:var(--red)">6 类关键数字</span></p></div>
+    <div class="card"><h3>③ 素材难利用</h3><p>历史灾害、洪痕照片、测量表格散落各文件中，写作靠人工翻找誊录。</p><p style="margin-top:10px"><span class="tag" style="background:var(--red-t);color:var(--red)">多源异构</span></p></div>
+    <div class="card"><h3>④ 排版重复劳动</h3><p>公文格式（小标宋标题、仿宋正文、目录、照片页）每份报告手工调整。</p><p style="margin-top:10px"><span class="tag" style="background:var(--red-t);color:var(--red)">份份重做</span></p></div>
+  </div>
+  <div style="background:var(--tint);border-radius:14px;padding:22px 26px;margin-top:26px">
+    <b style="color:var(--primary-d);font-size:16px">破题思路</b>
+    <p style="font-size:14px;color:#2B465C;margin-top:8px;line-height:1.9">建设对话式 AI 助手：业务人员选定流域后一句话下达指令，系统自动调取调查数据库与历史报告范文完成 7 章初稿；关键数字生成前锁定、成文后跨章核对；每章经人工审核把关后，一键导出符合公文规范的 Word 报告。</p>
+  </div>
+</section>
+
+<!-- ============ S2 解决方案总览 ============ -->
+<section class="slide">
+  <div class="ptitle">解决之道：四类角色 · 一条生产线</div>
+  <div class="psub">事实进、初稿出、人工审、公文归</div>
+  <div class="prule"></div>
+  <div class="stepflow" style="justify-content:center;margin:10px 0 26px">
+    <div class="st-item"><b>事实来源</b><span>调查数据库 · 知识库范文 · 用户素材</span></div><span class="parr">→</span>
+    <div class="st-item" style="border-color:var(--accent)"><b style="color:var(--accent)">AI 工作台</b><span>一句话下达指令，7 章自动写作</span></div><span class="parr">→</span>
+    <div class="st-item"><b>质量把关</b><span>自动质检三道防线 + 人工逐章审核</span></div><span class="parr">→</span>
+    <div class="st-item"><b>公文交付</b><span>一键导出规范 Word，照片自动嵌入</span></div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card" style="background:var(--tint2)"><h3>报告编制人员</h3><p>发起生成、上传素材、修订章节。常用：对话生成、大纲确认、素材管理。</p></div>
+    <div class="card" style="background:var(--tint2)"><h3>审核人员</h3><p>逐章审核、质检把关、驳回重修。常用：章节审核、版本对比、导出。</p></div>
+    <div class="card" style="background:var(--tint2)"><h3>数据维护人员</h3><p>维护调查数据、照片资料、图谱关系。常用：数据管理、文件管理。</p></div>
+    <div class="card" style="background:var(--tint2)"><h3>业务管理人员</h3><p>掌握进度与成果。常用：首页概览、一张图、AI 隐患识别台账。</p></div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:18px">
+    <div class="card"><h3>数据可溯源</h3><p>报告数字全部来自调查库与上传资料；查不到的一律写「暂无调查数据」，绝不虚构。</p></div>
+    <div class="card"><h3>人机协同</h3><p>AI 出初稿、系统保质量、人工做主编；驳回意见自动反馈 AI 重修，每版可对比。</p></div>
+    <div class="card"><h3>多入口联动</h3><p>对话工作台、GIS 一张图选流域、知识图谱维护，共享同一数据底座。</p></div>
+  </div>
+</section>
+
+<!-- ============ S3 原型：对话工作台 ============ -->
+<section class="slide" id="slide-wb">
+  <div class="ptitle">原型体验 ①：对话式工作台</div>
+  <div class="psub">实际系统的核心页面：左侧会话、中间对话、右侧章节审核</div>
+  <div class="prule"></div>
+  <div class="hint">可交互原型：点击「生成整份报告」快捷指令，观看从对话到 7 章生成的完整过程</div>
+  <div class="wb">
+    <div class="wb-side">
+      <div class="nsess">＋ 新建会话</div>
+      <div class="sess on"><b>黑石沟报告编制</b><span>刚刚 · 黑石沟</span></div>
+      <div class="sess"><b>柳林沟报告编制</b><span>昨天 · 柳林沟</span></div>
+      <div class="sess" style="opacity:.6"><b>红崖沟（已归档）</b><span>3 天前</span></div>
+      <div style="margin-top:14px;font-size:11px;color:var(--muted);line-height:1.8">换电脑、换浏览器登录，会话自动同步不丢失</div>
+    </div>
+    <div class="wb-chat">
+      <div class="chat-log" id="chatlog">
+        <div class="msg ai">您好，我是山洪报告助手。我可以帮您：<br>· 生成流域整份报告（7 章）<br>· 先出报告大纲供您确认<br>· 查询调查数据统计<br>· 导出 Word 报告</div>
+        <div class="quick" id="quickbar">
+          <button onclick="wbStart('帮我生成黑石沟的整份报告')">生成整份报告</button>
+          <button onclick="toast('演示环境：大纲确认请翻至下一页体验')">先出一份大纲</button>
+          <button onclick="wbAskData()">查流域数据</button>
+          <button onclick="toast('章节生成完成后即可导出 Word')">导出 Word</button>
+        </div>
+        <div id="chatflow"></div>
+      </div>
+      <div class="composer">
+        <input id="chatin" placeholder="输入指令，例如：帮我生成黑石沟的整份报告" onkeydown="if(event.key==='Enter')wbSend()">
+        <button id="sendbtn" onclick="wbSend()">发送</button>
+        <button id="stopbtn" class="stop" style="display:none" onclick="wbStop()">停止</button>
+      </div>
+    </div>
+    <div class="wb-chap">
+      <b style="font-size:13px;color:var(--primary-d)">章节审核 · 黑石沟</b>
+      <div class="chip7" id="chip7"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div id="chaplist"></div>
+      <div style="margin-top:8px">
+        <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">生成流水线</div>
+        <div class="pipe" id="pipe" style="gap:4px">
+          <div class="pnode" data-n="prepare" style="min-width:64px;padding:6px 8px">锁数字</div><span class="parr">›</span>
+          <div class="pnode" data-n="write" style="min-width:64px;padding:6px 8px">写章节</div><span class="parr">›</span>
+          <div class="pnode" data-n="qc" style="min-width:64px;padding:6px 8px">质检</div><span class="parr">›</span>
+          <div class="pnode" data-n="ch7" style="min-width:64px;padding:6px 8px">第7章</div><span class="parr">›</span>
+          <div class="pnode" data-n="cons" style="min-width:64px;padding:6px 8px">核数字</div><span class="parr">›</span>
+          <div class="pnode" data-n="save" style="min-width:64px;padding:6px 8px">保存</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ S4 原型：大纲确认 ============ -->
+<section class="slide" id="slide-ol">
+  <div class="ptitle">原型体验 ②：大纲两阶段确认</div>
+  <div class="psub">先把控报告结构，再生成正文——适合对章节安排有明确要求的场景</div>
+  <div class="prule"></div>
+  <div class="hint">可交互原型：勾选/取消小节、填写本章要求，然后点击「确认大纲」</div>
+  <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;flex:1;min-height:0">
+    <div style="overflow-y:auto;padding-right:6px" id="ol-list"></div>
+    <div>
+      <div class="card" style="background:var(--tint)">
+        <h3>两阶段的价值</h3>
+        <p>· 结构先对齐再动笔，避免整章返工<br>· 每章的补充要求会带进写作<br>· 不确认也可以：直接说「生成整份报告」，按标准提纲一次成稿</p>
+      </div>
+      <button class="btn amber" style="width:100%;margin-top:16px;padding:13px" onclick="olConfirm()">确认大纲，开始生成</button>
+      <div style="font-size:12px;color:var(--muted);margin-top:10px;text-align:center">确认后将跳转到工作台原型观看生成过程</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ S5 原型：一张图 ============ -->
+<section class="slide" id="slide-map">
+  <div class="ptitle">原型体验 ③：GIS 一张图</div>
+  <div class="psub">调查成果落在地图上：看见数据，选中流域，一键生成</div>
+  <div class="prule"></div>
+  <div class="hint">可交互原型：点击流域面选中 → 点「生成报告」；勾选图层开关查看要素；点击红点看隐患弹窗</div>
+  <div class="mapwrap">
+    <svg id="mapsvg" width="100%" height="100%" viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid slice">
+      <path d="M60,470 C200,430 260,330 420,300 S700,230 940,120" stroke="#7FA8C4" stroke-width="10" fill="none" opacity=".45" stroke-linecap="round"/>
+      <path d="M120,520 C300,480 420,400 620,360 S860,300 980,260" stroke="#7FA8C4" stroke-width="6" fill="none" opacity=".3" stroke-linecap="round"/>
+      <g id="g-ws">
+        <polygon class="ws-poly" data-ws="黑石沟" data-obj="23" data-pop="486" points="120,140 300,110 360,220 260,310 110,270"
+          fill="rgba(127,168,196,.45)" stroke="#5B87A8" stroke-width="2" onclick="mapSelect(this)"/>
+        <polygon class="ws-poly" data-ws="柳林沟" data-obj="31" data-pop="720" points="430,150 620,120 690,240 560,330 420,270"
+          fill="rgba(127,168,196,.45)" stroke="#5B87A8" stroke-width="2" onclick="mapSelect(this)"/>
+        <polygon class="ws-poly" data-ws="红崖沟" data-obj="17" data-pop="352" points="250,360 440,340 500,450 350,520 220,470"
+          fill="rgba(127,168,196,.45)" stroke="#5B87A8" stroke-width="2" onclick="mapSelect(this)"/>
+      </g>
+      <g id="g-sec" stroke-width="2.5">
+        <line x1="150" y1="200" x2="330" y2="180" stroke="#C0504D"/><line x1="460" y1="200" x2="650" y2="190" stroke="#C0504D"/>
+        <line x1="230" y1="140" x2="270" y2="290" stroke="#2F6DA3" stroke-dasharray="6 4"/><line x1="520" y1="150" x2="560" y2="310" stroke="#2F6DA3" stroke-dasharray="6 4"/>
+      </g>
+      <g id="g-prev">
+        <rect x="180" y="180" width="14" height="14" fill="#4A79A5" rx="3"/><rect x="500" y="200" width="14" height="14" fill="#2E7D52" rx="3"/>
+        <rect x="310" y="410" width="14" height="14" fill="#E88B1A" rx="3"/><rect x="590" y="250" width="14" height="14" fill="#4A79A5" rx="3"/>
+      </g>
+      <g id="g-hz" fill="#C0504D">
+        <circle class="hz" cx="230" cy="230" r="7" onclick="mapPopup(event,'跨沟道路隐患','黑石沟 · 阻水风险')"/>
+        <circle class="hz" cx="300" cy="160" r="7" onclick="mapPopup(event,'桥涵隐患','黑石沟 · 过流能力不足')"/>
+        <circle class="hz" cx="520" cy="240" r="7" onclick="mapPopup(event,'沟滩占地','柳林沟 · 侵占行洪通道')"/>
+        <circle class="hz" cx="610" cy="170" r="7" onclick="mapPopup(event,'塘堰坝隐患','柳林沟 · 溃决风险')"/>
+        <circle class="hz" cx="330" cy="450" r="7" onclick="mapPopup(event,'滑坡隐患','红崖沟 · 堵沟风险')"/>
+        <circle class="hz" cx="420" cy="400" r="7" onclick="mapPopup(event,'壅水隐患','红崖沟 · 两岸受淹')"/>
+      </g>
+      <text x="185" y="215" font-size="15" font-weight="700" fill="#093A4A" id="t-ws1">黑石沟</text>
+      <text x="525" y="225" font-size="15" font-weight="700" fill="#093A4A">柳林沟</text>
+      <text x="335" y="435" font-size="15" font-weight="700" fill="#093A4A">红崖沟</text>
+    </svg>
+    <div class="mappanel" style="left:14px;top:14px;width:158px">
+      <h4>图层</h4>
+      <label class="lyr"><input type="checkbox" checked onchange="document.getElementById('g-ws').style.display=this.checked?'':'none'"> 小流域</label>
+      <label class="lyr"><input type="checkbox" checked onchange="document.getElementById('g-sec').style.display=this.checked?'':'none'"> 断面</label>
+      <label class="lyr"><input type="checkbox" checked onchange="document.getElementById('g-prev').style.display=this.checked?'':'none'"> 防治对象</label>
+      <label class="lyr"><input type="checkbox" checked onchange="document.getElementById('g-hz').style.display=this.checked?'':'none'"> 隐患要素</label>
+    </div>
+    <div class="mappanel" id="wsinfo" style="right:14px;top:14px;width:230px;display:none">
+      <h4 id="wsname">—</h4>
+      <div style="color:#3D525C;line-height:2" id="wsmeta"></div>
+      <button class="btn amber sm" style="width:100%;margin-top:10px" onclick="mapGen()">生成报告</button>
+    </div>
+    <div class="popup" id="mappop"></div>
+    <div class="mappanel" style="left:14px;bottom:14px;font-size:11.5px;color:var(--muted)">示意底图 · 实际系统使用天地图影像/矢量/地形三套底图</div>
+    <div class="mask" id="genmask">
+      <div class="modal" style="width:380px">
+        <h3>确认生成报告</h3>
+        <div style="font-size:13.5px;line-height:2;color:#3D525C" id="genmeta"></div>
+        <div style="font-size:12px;color:var(--muted);margin:8px 0 16px">确认后将绑定该流域并开始整份报告生成（7 章）</div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn ghost" onclick="document.getElementById('genmask').classList.remove('show')">取消</button>
+          <button class="btn amber" onclick="mapGenGo()">确认生成</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ S6 原型：章节审核 ============ -->
+<section class="slide" id="slide-audit">
+  <div class="ptitle">原型体验 ④：章节审核与修订</div>
+  <div class="psub">AI 出初稿，人来做主编——通过 / 驳回 / 重修 / 对比，每一版都有迹可循</div>
+  <div class="prule"></div>
+  <div class="hint">可交互原型：左侧选章节 → 试试「通过」「驳回」「重新生成」「对比上一版」</div>
+  <div class="audit-grid">
+    <div class="alist" id="auditlist"></div>
+    <div class="adetail" id="auditdetail"></div>
+  </div>
+</section>
+
+<!-- ============ S7 质量三道防线 ============ -->
+<section class="slide">
+  <div class="ptitle">质量保障：三道防线守住报告数字</div>
+  <div class="psub">系统自动把关，审核人员把精力花在刀刃上</div>
+  <div class="prule"></div>
+  <div class="defense">
+    <div class="card" style="background:var(--tint)"><h3>防线一 · 生成前锁定</h3><p>防治对象数、受威胁人口在生成前锁定为基准；第一章成文后自动提取面积、河长、比降、沟口高程作为基准——后续各章以此为锚。</p></div>
+    <div class="card"><h3>防线二 · 每章自动体检</h3><p>占位文字没写完、篇幅过短、表格残缺、应有表格缺失、百分比超 100%、内容与目标流域不符、第 5 章疑似编造历史灾害……逐章检查。</p></div>
+    <div class="card" style="background:var(--tint)"><h3>防线三 · 跨章数字核对</h3><p>各章引用的关键数字与锁定基准比对（允许 2% 误差），防止「一章写 12.5 平方公里、另一章写 13.2」这类前后打架。</p></div>
+  </div>
+  <div style="display:flex;gap:18px;margin-top:22px">
+    <div class="card" style="flex:1"><h3><span class="tag" style="background:var(--red-t);color:var(--red)">红色徽标</span></h3><p>严重问题：内容不可用，需重修或编辑后重新审核。</p></div>
+    <div class="card" style="flex:1"><h3><span class="tag" style="background:var(--accent-t);color:#9A6A12">黄色徽标</span></h3><p>提示问题：供审核人参考，不阻断审核与导出，酌情处理。</p></div>
+  </div>
+  <div style="text-align:center;margin-top:26px;font-size:16px;font-weight:700;color:var(--accent)">原则：查不到的数据一律写「暂无调查数据」，宁可留白，绝不虚构</div>
+</section>
+
+<!-- ============ S8 成果物 ============ -->
+<section class="slide">
+  <div class="ptitle">最终成果物：结构标准的 7 章报告 + 公文级 Word</div>
+  <div class="psub">系统内长期留痕，导出件可直接进入签批印发流程</div>
+  <div class="prule"></div>
+  <div style="display:grid;grid-template-columns:1fr 400px;gap:26px;flex:1;min-height:0">
+    <div style="overflow-y:auto">
+      <table class="biz">
+        <tr><th style="width:46px">章</th><th style="width:150px">章名</th><th>主要内容</th></tr>
+        <tr><td>一</td><td>流域概况</td><td>基本信息、面积、沟道特征、防治对象与人口、乡镇分布</td></tr>
+        <tr><td>二</td><td>前期准备</td><td>调查组织、队伍、资料准备等前期工作</td></tr>
+        <tr><td>三</td><td>外业调查成果</td><td>防治对象清单、重点对象、隐患要素、沟道沟滩成果（附现场照片）</td></tr>
+        <tr><td>四</td><td>影响分析</td><td>统一洪水参数下的壅水/漫流/溃决分析、桥涵阻水影响</td></tr>
+        <tr><td>五</td><td>历史山洪灾害情况</td><td>历史灾害与洪痕（以用户上传资料为依据，无资料如实说明）</td></tr>
+        <tr><td>六</td><td>防治区分析</td><td>危险区/警戒区划分与分区统计</td></tr>
+        <tr><td>七</td><td>成果与建议</td><td>调查成果汇总与防治对策建议</td></tr>
+      </table>
+      <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:16px">
+        <div class="card" style="background:var(--tint2)"><h3>系统内成果</h3><p>章节状态、质检记录、引用资料清单、历史版本长期保存，随时复查重新导出。</p></div>
+        <div class="card" style="background:var(--green-t)"><h3>导出成果</h3><p>章节有正文即可导出，可先出送审稿、审完再出正式稿；文件名含流域/章号/批次，便于归档。</p></div>
+      </div>
+    </div>
+    <div class="word">
+      <h5>山洪灾害风险隐患<br>调查评价报告</h5>
+      <div class="toc">目 录<br>一、流域概况 ………… 1<br>二、前期准备 ………… 5<br>三、外业调查成果 …… 7</div>
+      <div class="h6">一、流域概况</div>
+      <p>黑石沟流域面积 12.5 平方公里，主沟长度 5.8 公里，沟道平均比降 0.086，沟口高程 1742 米。流域内共有防治对象 23 个，受威胁人口 486 人……</p>
+      <div style="text-align:center;color:var(--muted);font-size:11px;margin-top:8px">（Word 样式示意：小标宋标题 · 自动目录 · 仿宋正文 · 照片横版页）</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ S9 流程与规则 ============ -->
+<section class="slide">
+  <div class="ptitle">九个步骤出一份报告 · 七条业务约定</div>
+  <div class="psub">过程中可随时离开：会话自动保存，断网重进接着干</div>
+  <div class="prule"></div>
+  <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:12px">
+    <div class="card" style="padding:13px 16px"><h3 style="font-size:14.5px">1 新建会话</h3><p style="font-size:12px">进入页面自动就绪</p></div>
+    <div class="card" style="padding:13px 16px"><h3 style="font-size:14.5px">2 绑定流域</h3><p style="font-size:12px">说名字或图上点选</p></div>
+    <div class="card" style="padding:13px 16px"><h3 style="font-size:14.5px">3 上传素材</h3><p style="font-size:12px">可选，确认归章</p></div>
+    <div class="card" style="padding:13px 16px;background:var(--tint2)"><h3 style="font-size:14.5px">4 确认大纲</h3><p style="font-size:12px">可选，勾小节补要求</p></div>
+    <div class="card" style="padding:13px 16px;background:var(--accent-t)"><h3 style="font-size:14.5px;color:var(--accent)">5 自动写作</h3><p style="font-size:12px">7 章生成，进度可见</p></div>
+    <div class="card" style="padding:13px 16px;background:var(--tint2)"><h3 style="font-size:14.5px">6 检查修订</h3><p style="font-size:12px">编辑 / 重修 / 对比</p></div>
+    <div class="card" style="padding:13px 16px"><h3 style="font-size:14.5px">7 逐章审核</h3><p style="font-size:12px">通过 / 驳回</p></div>
+    <div class="card" style="padding:13px 16px"><h3 style="font-size:14.5px">8 导出 Word</h3><p style="font-size:12px">公文级报告下载</p></div>
+    <div class="card" style="padding:13px 16px"><h3 style="font-size:14.5px">9 归档交付</h3><p style="font-size:12px">进入签批流程</p></div>
+  </div>
+  <div class="prule" style="margin:20px 0 14px"></div>
+  <div style="font-size:12.8px;line-height:2.1;color:#3D525C;column-count:2;column-gap:36px">
+    ① 一流域一报告，同流域同时只允许一个生成任务；<br>
+    ② 先绑流域再操作，资料按流域隔离不串用；<br>
+    ③ 素材解析完成才参与写作，扫描件请用翻拍照片；<br>
+    ④ AI 是初稿、人是主编，报告须审核后方可交付；<br>
+    ⑤ 已通过章节重修时原版自动保留可对比；<br>
+    ⑥ 调查数据更新后应对相关章节重新生成；<br>
+    ⑦ AI 隐患识别仅供参考，不替代人工研判。
+  </div>
+</section>
+
+<!-- ============ S10 结尾 ============ -->
+<section class="slide dark" style="justify-content:center;position:relative;overflow:hidden">
+  <div class="wave" style="width:480px;height:480px;left:-160px;top:-180px;background:#11475C;opacity:.8"></div>
+  <div class="wave" style="width:300px;height:300px;left:-60px;top:-80px;background:#16607B;opacity:.8"></div>
+  <div class="kicker">从数周到一次对话</div>
+  <h1 class="big" style="font-size:44px">AI 出初稿 · 系统保质量<br>人工做主编 · 一键成交付</h1>
+  <div class="statcards">
+    <div class="statcard"><b>7 章</b><span>标准报告体例<br>一次对话成稿</span></div>
+    <div class="statcard"><b>3 道</b><span>质量防线<br>锁定 / 体检 / 核对</span></div>
+    <div class="statcard"><b>9 步</b><span>从新建会话<br>到公文下载</span></div>
+    <div class="statcard"><b>100%</b><span>关键数字来自调查库<br>与资料，不虚构</span></div>
+  </div>
+  <div class="closing-tag" style="margin-top:36px">想再体验一次？回到 <span class="demo-link" onclick="go(3)">对话工作台原型</span> 或 <span class="demo-link" onclick="go(5)">一张图原型</span></div>
+  <div style="margin-top:26px;font-size:20px;font-weight:700">汇报完毕 · 谢谢</div>
+</section>
+
+</div>
+
+<div id="toast"></div>
+<div id="nav">
+  <button id="prev" onclick="go(cur-1)">‹ 上一页</button>
+  <div id="dots"></div>
+  <button id="next" onclick="go(cur+1)">下一页 ›</button>
+  <div id="counter"></div>
+</div>
+
+<script>
+/* ================= 翻页框架 ================= */
+const slides=[...document.querySelectorAll('.slide')];
+const dotsBox=document.getElementById('dots');
+let cur=0;
+slides.forEach((_,i)=>{const d=document.createElement('i');d.onclick=()=>go(i);dotsBox.appendChild(d);});
+function go(i){
+  cur=Math.max(0,Math.min(slides.length-1,i));
+  slides.forEach((s,j)=>s.classList.toggle('active',j===cur));
+  [...dotsBox.children].forEach((d,j)=>d.classList.toggle('on',j===cur));
+  document.getElementById('counter').textContent=(cur+1)+' / '+slides.length;
+  document.getElementById('prev').disabled=cur===0;
+  document.getElementById('next').disabled=cur===slides.length-1;
+}
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  if(e.key==='ArrowRight')go(cur+1);
+  if(e.key==='ArrowLeft')go(cur-1);
+});
+function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2400);}
+
+/* ================= 原型①：对话工作台 ================= */
+const CHAPS=['一、流域概况','二、前期准备','三、外业调查成果','四、影响分析','五、历史山洪灾害情况','六、防治区分析','七、成果与建议'];
+let wbTimers=[];
+function wbT(fn,ms){wbTimers.push(setTimeout(fn,ms));}
+function wbClear(){wbTimers.forEach(clearTimeout);wbTimers=[];}
+function chapHtml(i,st){return `<div class="chap"><span class="st ${st.cls}">${st.txt}</span><b>第${i+1}章 ${CHAPS[i]}</b><div style="color:var(--muted);font-size:11px;margin-top:3px">${st.sub||''}</div></div>`;}
+function wbRenderChaps(states){
+  document.getElementById('chaplist').innerHTML=states.map((s,i)=>chapHtml(i,s)).join('');
+  const chips=[...document.getElementById('chip7').children];
+  const map={idle:'',gen:'gen',wait:'wait',pass:'wait',fail:'fail'};
+  chips.forEach((c,i)=>{c.className=map[states[i].key]||'';});
+}
+const ST={idle:{key:'idle',cls:'wait',txt:'未开始',sub:'等待生成'},gen:{key:'gen',cls:'gen',txt:'生成中',sub:'AI 正在撰写…'},
+  wait:{key:'wait',cls:'wait',txt:'待审核',sub:'初稿已完成，请审核'},fail:{key:'fail',cls:'fail',txt:'失败',sub:'已被停止'}};
+let wbStates=CHAPS.map(()=>({...ST.idle}));
+wbRenderChaps(wbStates);
+function pipeSet(n,cls){const el=document.querySelector(`.pnode[data-n="${n}"]`);if(el){el.classList.remove('run','done','fail');if(cls)el.classList.add(cls);}}
+function pipeReset(){['prepare','write','qc','ch7','cons','save'].forEach(n=>pipeSet(n,''));}
+function addMsg(cls,html,id){const d=document.createElement('div');d.className='msg '+cls;d.innerHTML=html;if(id)d.id=id;
+  document.getElementById('chatflow').appendChild(d);const log=document.getElementById('chatlog');log.scrollTop=log.scrollHeight;return d;}
+function streamText(el,text,done){
+  let i=0;el.innerHTML='<span class="cursor"></span>';
+  (function tick(){
+    if(i<text.length){i+=2;el.innerHTML=text.slice(0,i).replace(/\n/g,'<br>')+'<span class="cursor"></span>';
+      const log=document.getElementById('chatlog');log.scrollTop=log.scrollHeight;wbT(tick,28);}
+    else{el.innerHTML=text.replace(/\n/g,'<br>');if(done)done();}
+  })();
+}
+function wbBusy(b){document.getElementById('sendbtn').style.display=b?'none':'';document.getElementById('stopbtn').style.display=b?'':'none';}
+function wbStart(text){
+  wbClear();pipeReset();wbStates=CHAPS.map(()=>({...ST.idle}));wbRenderChaps(wbStates);
+  document.getElementById('chatflow').innerHTML='';
+  addMsg('user',text);
+  wbBusy(true);
+  const ai=addMsg('ai','');
+  wbT(()=>streamText(ai,'好的，已为「黑石沟」启动整份报告生成（7 章）。\n正在按 实测数据包 + 标准提纲 并行撰写第 1-6 章，随后汇总写第 7 章；关键数字已锁定，过程中会自动质检并做跨章数字核对。',()=>{
+    addMsg('sys','已绑定流域：黑石沟（wscd 62102****）');
+    const prog=addMsg('ai','', 'progbox');
+    const names=['prepare','write','qc','ch7','cons','save'];
+    const label={prepare:'锁定关键数字（防治对象 23 个、受威胁人口 486 人）',write:'并行撰写第 1-6 章',qc:'章节自动质检',ch7:'汇总撰写第 7 章',cons:'跨章数字一致性核对',save:'保存报告（状态：待审核）'};
+    let step=0;
+    (function next(){
+      if(step>0)pipeSet(names[step-1],'done');
+      if(step>=names.length){
+        prog.innerHTML='✅ 全部 7 章已生成完成，进入「待审核」。请在右侧面板逐章审核，或对我说「导出报告」。';
+        wbBusy(false);return;
+      }
+      const n=names[step];pipeSet(n,'run');
+      prog.innerHTML=`⏳ ${label[n]} …`;
+      if(n==='write'){
+        wbStates.forEach((s,i)=>{if(i<6)wbStates[i]={...ST.gen};});wbRenderChaps(wbStates);
+        for(let i=0;i<6;i++)wbT(()=>{wbStates[i]={...ST.wait};wbRenderChaps(wbStates);prog.innerHTML=`⏳ 并行撰写第 1-6 章（第 ${i+1} 章已完成）…`;},500+i*520);
+        wbT(()=>{step++;next();},500+6*520);
+      }else if(n==='ch7'){
+        wbStates[6]={...ST.gen};wbRenderChaps(wbStates);
+        wbT(()=>{wbStates[6]={...ST.wait};wbRenderChaps(wbStates);step++;next();},1600);
+      }else if(n==='qc'){
+        wbT(()=>{prog.innerHTML='⏳ 章节自动质检（第 3 章 1 条黄色提示：表格存在「待补充」空行）…';},600);
+        wbT(()=>{step++;next();},1500);
+      }else{
+        wbT(()=>{step++;next();},1100);
+      }
+    })();
+  }),700);
+}
+function wbStop(){
+  wbClear();wbBusy(false);
+  let any=false;
+  wbStates=wbStates.map(s=>{if(s.key==='gen'){any=true;return{...ST.fail};}return s;});
+  wbRenderChaps(wbStates);['prepare','write','qc','ch7','cons','save'].forEach(n=>{const el=document.querySelector(`.pnode[data-n="${n}"]`);if(el.classList.contains('run'))pipeSet(n,'fail');});
+  addMsg('sys','已停止。生成中的章节已标记为失败，可重新发起生成。');
+}
+function wbSend(){const v=document.getElementById('chatin').value.trim();if(!v)return;document.getElementById('chatin').value='';
+  if(/生成|报告/.test(v)&&!/数据|多少|统计/.test(v))wbStart(v);
+  else if(/数据|多少|统计|隐患|对象/.test(v)){addMsg('user',v);wbAskData(true);}
+  else{addMsg('user',v);const ai=addMsg('ai','');streamText(ai,'我可以帮您生成报告、出大纲、查数据、导出 Word。试试点击上方快捷指令。「生成 XX 的整份报告」即可开工。');}
+}
+function wbAskData(skipUser){
+  if(!skipUser){}
+  wbBusy(true);
+  const ai=addMsg('ai','');
+  streamText(ai,'黑石沟流域调查数据统计：\n· 防治对象：23 个（村落 12、企业 4、集镇 3、其他 4）\n· 受威胁人口：486 人\n· 隐患要素：跨沟道路 5 处、桥涵 3 处、沟滩占地 2 处\n（数据来自调查数据库，供报告引用）',()=>wbBusy(false));
+}
+
+/* ================= 原型②：大纲确认 ================= */
+const OL=[
+  ['一、流域概况',['1.1 流域自然地理','1.2 沟道特征','1.3 防治对象与人口'],'表1-1 流域基本情况表'],
+  ['二、前期准备',['2.1 组织与队伍','2.2 资料准备'],'—'],
+  ['三、外业调查成果',['3.1 防治对象调查','3.2 隐患要素调查','3.3 沟道沟滩调查'],'表3-1 防治对象名录、表3-2 隐患点清单'],
+  ['四、影响分析',['4.1 计算参数与工况','4.2 壅水影响分析','4.3 桥涵阻水分析'],'表4-1 洪水计算参数表'],
+  ['五、历史山洪灾害情况',['5.1 历史灾害场次','5.2 洪痕调查'],'—'],
+  ['六、防治区分析',['6.1 危险区划分','6.2 警戒区划分'],'表6-1 防治分区统计表'],
+  ['七、成果与建议',['7.1 调查成果汇总','7.2 防治对策建议'],'—'],
+];
+document.getElementById('ol-list').innerHTML=OL.map((c,i)=>`
+<details class="ol-chap" ${i<2?'open':''}>
+  <summary>第${i+1}章 ${c[0]}　<span style="font-weight:400;font-size:11.5px;color:var(--muted)">应有表格：${c[2]}</span></summary>
+  <div class="ol-secs">${c[1].map(sec=>`<label><input type="checkbox" checked> ${sec}</label>`).join('')}</div>
+  <input class="ol-note" placeholder="本章额外要求（可选），例如：本章重点写沿河村落">
+</details>`).join('');
+function olConfirm(){toast('大纲已确认，开始生成报告');setTimeout(()=>{go(3);wbStart('按已确认的大纲生成黑石沟的整份报告');},700);}
+
+/* ================= 原型③：一张图 ================= */
+let selPoly=null;
+function mapSelect(p){
+  document.querySelectorAll('.ws-poly').forEach(x=>x.classList.remove('sel'));
+  p.classList.add('sel');selPoly=p;
+  document.getElementById('wsinfo').style.display='block';
+  document.getElementById('wsname').textContent=p.dataset.ws;
+  document.getElementById('wsmeta').innerHTML=`防治对象：<b>${p.dataset.obj}</b> 个<br>受威胁人口：<b>${p.dataset.pop}</b> 人`;
+  hidePopup();
+}
+function mapPopup(e,t,d){
+  const pop=document.getElementById('mappop');
+  pop.innerHTML=`<b>${t}</b><br>${d}<br><span style="color:var(--muted);font-size:11px">实际系统可查看详情并发起 AI 风险识别</span>`;
+  pop.style.display='block';
+  const wrap=document.querySelector('.mapwrap').getBoundingClientRect();
+  pop.style.left=Math.min(e.clientX-wrap.left+14,wrap.width-240)+'px';
+  pop.style.top=(e.clientY-wrap.top-10)+'px';
+  e.stopPropagation();
+}
+function hidePopup(){document.getElementById('mappop').style.display='none';}
+document.querySelector('.mapwrap').addEventListener('click',hidePopup);
+function mapGen(){
+  if(!selPoly){toast('请先点击选择一个流域');return;}
+  document.getElementById('genmeta').innerHTML=
+    `流域名称：<b>${selPoly.dataset.ws}</b><br>防治对象：${selPoly.dataset.obj} 个　受威胁人口：${selPoly.dataset.pop} 人`;
+  document.getElementById('genmask').classList.add('show');
+}
+function mapGenGo(){
+  document.getElementById('genmask').classList.remove('show');
+  go(3);
+  wbStart(`帮我生成${selPoly.dataset.ws}的整份报告`);
+}
+
+/* ================= 原型④：章节审核 ================= */
+const AU_BODY=`黑石沟流域面积 12.5 平方公里，主沟长度 5.8 公里，沟道平均比降 0.086，沟口高程 1742 米。
+
+流域内共有防治对象 23 个，受威胁人口 486 人，涉及 2 个乡镇 6 个行政村。
+
+表1-1 流域基本情况表
+| 指标 | 数值 |
+| 流域面积 | 12.5 km² |
+| 主沟长度 | 5.8 km |
+| 沟道比降 | 0.086 |`;
+let auStates=CHAPS.map((_,i)=>({st:i<2?'pass':(i===2?'wait':'wait'),qc:i===2?['表格存在「待补充」空行']:null}));
+let auCur=0;
+const AU_TXT={wait:['待审核','wait'],pass:['已通过','pass'],rej:['已驳回','fail'],gen:['生成中','gen']};
+function auRenderList(){
+  document.getElementById('auditlist').innerHTML=auStates.map((s,i)=>{
+    const[t,c]=AU_TXT[s.st];
+    return `<div class="aitem ${i===auCur?'on':''}" onclick="auSel(${i})">
+      <span class="st ${c}">${t}</span><b style="font-size:12.5px;color:var(--primary-d)">第${i+1}章</b>
+      <div style="font-size:11.5px;color:#3D525C;margin-top:3px">${CHAPS[i]}</div>
+      ${s.qc?`<div style="font-size:10.5px;color:#9A6A12;margin-top:3px">⚠ ${s.qc.length} 条质检提示</div>`:''}
+    </div>`;}).join('')
+    +`<div style="text-align:center;font-size:12px;color:var(--muted);margin-top:6px">已通过 ${auStates.filter(s=>s.st==='pass').length} / 7</div>`;
+}
+function auSel(i){auCur=i;auRenderList();auRenderDetail();}
+function auRenderDetail(){
+  const s=auStates[auCur];const[t,c]=AU_TXT[s.st];
+  let html=`<span class="st ${c}">${t}</span><h3 style="font-size:17px;color:var(--primary-d)">第${auCur+1}章 ${CHAPS[auCur]}</h3>`;
+  if(s.qc)html+=`<div style="background:var(--accent-t);border:1px solid #EAD9B8;border-radius:8px;padding:8px 12px;font-size:12px;color:#9A6A12;margin-top:10px">质检提示：${s.qc.join('；')}</div>`;
+  html+=`<div class="body">${s.body||AU_BODY}</div>`;
+  html+=`<div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn sm" style="background:var(--green)" onclick="auPass()">通过</button>
+    <button class="btn sm red" onclick="auReject()">驳回</button>
+    <button class="btn sm amber" onclick="auRegen()">重新生成</button>
+    <button class="btn sm ghost" onclick="auEdit()">在线编辑</button>
+    <button class="btn sm ghost" onclick="auDiff()">对比上一版</button>
+  </div><div id="au-extra"></div>`;
+  document.getElementById('auditdetail').innerHTML=html;
+}
+function auPass(){auStates[auCur].st='pass';auRenderList();auRenderDetail();toast(`第${auCur+1}章已通过`);}
+function auReject(){
+  document.getElementById('au-extra').innerHTML=`<textarea class="opinion" id="rejtext" placeholder="请填写驳回意见（将作为修改要求反馈给 AI），例如：人口数据请与表 1-1 对齐"></textarea>
+  <div style="margin-top:8px;display:flex;gap:8px"><button class="btn sm red" onclick="auRejectGo()">确认驳回</button></div>`;
+}
+function auRejectGo(){
+  const v=document.getElementById('rejtext').value.trim();
+  if(!v){toast('驳回必须填写意见');return;}
+  auStates[auCur].st='rej';auStates[auCur].opinion=v;auRenderList();auRenderDetail();
+  toast('已驳回，意见已反馈给 AI');
+}
+function auRegen(){
+  auStates[auCur].st='gen';auRenderList();auRenderDetail();
+  const extra=document.getElementById('au-extra');
+  setTimeout(()=>{
+    auStates[auCur].st='wait';auStates[auCur].qc=null;
+    auStates[auCur].body=(auStates[auCur].body||AU_BODY)+'\n\n（本版已根据'+(auStates[auCur].opinion?'驳回意见':'修改要求')+'修订：补充完善了缺失表格内容。）';
+    auRenderList();auRenderDetail();toast(`第${auCur+1}章已重新生成，请重新审核`);
+  },2200);
+}
+function auEdit(){toast('实际系统提供左侧编辑 + 右侧实时预览的在线编辑器');}
+function auDiff(){
+  document.getElementById('au-extra').innerHTML=`<div class="diff">
+    <span class="same">　黑石沟流域面积 12.5 平方公里，主沟长度 5.8 公里，</span>
+    <span class="del">- 沟道平均比降 0.092，沟口高程 1740 米。</span>
+    <span class="add">+ 沟道平均比降 0.086，沟口高程 1742 米。</span>
+    <span class="same">　流域内共有防治对象 23 个，受威胁人口 486 人。</span>
+    <span class="add">+ 涉及 2 个乡镇 6 个行政村。</span>
+  </div>`;
+}
+auRenderList();auRenderDetail();
+
+go(0);
+</script>
+</body>
+</html>

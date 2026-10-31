@@ -17,6 +17,10 @@ export interface IChatMsg {
   __streaming?: boolean;
   /** 章节生成进度状态行（由 SSE progress 事件生成并就地更新），不是普通回复 */
   __progress?: boolean;
+  /** 模型推理过程（思考深度开启时由 SSE thinking 事件累积），渲染为折叠块 */
+  __thinking?: string;
+  /** 正在接收推理内容：思考块展开；接收完毕/结束后清除，历史消息默认收起 */
+  __thinkingActive?: boolean;
 }
 
 export interface ISession {
@@ -90,10 +94,21 @@ function pickMsg(a: IChatMsg, b: IChatMsg): IChatMsg {
     time: Math.max(aTime, bTime) || newer.time || older.time,
     id: newer.id || older.id,
   };
+  // 推理内容取较长一侧（流式期间内容持续增长）
+  const aThink = (a as any).__thinking || '';
+  const bThink = (b as any).__thinking || '';
+  (out as any).__thinking = bThink.length >= aThink.length ? (bThink || undefined) : (aThink || undefined);
+  if ((out as any).__thinking === undefined) {
+    delete (out as any).__thinking;
+  }
   // 流式占位标记只属于产生它的窗口：流结束后合并时旧副本上的 __streaming 必须清掉，
   // 否则其他窗口的这条气泡会永远显示闪烁光标
   if (!(newer as any).__streaming) {
     delete (out as any).__streaming;
+  }
+  // 推理接收中标记同理：只在仍然活跃的一侧保留
+  if (!(newer as any).__thinkingActive) {
+    delete (out as any).__thinkingActive;
   }
   return out;
 }
@@ -144,18 +159,22 @@ export function mergeMessages(left: IChatMsg[] = [], right: IChatMsg[] = []): IC
   // __streaming 是"本窗口正在流式输出"的内存态标记，不允许进任何合并结果：
   // 否则异常中断的轮次会把标记写进 localStorage/服务端，恢复后这条气泡永远闪"生成中"光标。
   // 持有流的窗口用内存里的原对象渲染，不受这里影响。
-  return order
-    .map((k) => byKey.get(k)!)
-    .sort((a, b) => (a.time || 0) - (b.time || 0))
-    .map((m) => {
-      if ((m as any).__streaming) {
-        const clean = { ...m };
-        delete (clean as any).__streaming;
-        return clean;
-      }
-      return m;
-    });
-}
+    return order
+      .map((k) => byKey.get(k)!)
+      .sort((a, b) => (a.time || 0) - (b.time || 0))
+      .map((m) => {
+        // __streaming / __thinkingActive 是"本窗口正在接收"的内存态标记，不允许进任何合并结果：
+        // 否则异常中断的轮次会把标记写进 localStorage/服务端，恢复后这条气泡永远闪"生成中"光标。
+        // 持有流的窗口用内存里的原对象渲染，不受这里影响。
+        if ((m as any).__streaming || (m as any).__thinkingActive) {
+          const clean = { ...m };
+          delete (clean as any).__streaming;
+          delete (clean as any).__thinkingActive;
+          return clean;
+        }
+        return m;
+      });
+  }
 
 /** 不含 id 的内容指纹键：进度行按章节，其余按 role+前200字 */
 function contentKey(m: IChatMsg): string {

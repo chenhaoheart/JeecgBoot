@@ -9,6 +9,7 @@ enum Api {
   rowUpdate = '/sh/report/map/admin/row/update',
   rowDelete = '/sh/report/map/admin/row/delete',
   importData = '/sh/report/map/admin/import',
+  importSpatial = '/sh/report/map/admin/import/spatial',
   geom = '/sh/report/map/admin/geom',
   geomUpdate = '/sh/report/map/admin/geom/update',
   geomByPid = '/sh/report/map/admin/geom/by-pid',
@@ -250,6 +251,15 @@ export const importExcel = (params: { ds: string; year: number; mode: string; fi
   const { ds, year, mode, file } = params;
   return defHttp.uploadFile(
     { url: Api.importData },
+    { name: 'file', file, data: { ds, year, mode } }
+  );
+};
+
+/** 空间数据导入（Shapefile zip / GeoJSON；几何直接入库并显示在地图图层） */
+export const importSpatial = (params: { ds: string; year: number; mode: string; file: File }) => {
+  const { ds, year, mode, file } = params;
+  return defHttp.uploadFile(
+    { url: Api.importSpatial },
     { name: 'file', file, data: { ds, year, mode } }
   );
 };

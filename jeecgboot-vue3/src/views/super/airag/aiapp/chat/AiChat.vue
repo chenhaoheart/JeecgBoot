@@ -346,13 +346,12 @@
       initChartData(params.appId);
     } else {
       initChartData();
-      appData.value.metadata = { izDraw: '1', defaultSelect: '0' }  
+      appData.value.metadata = { izDraw: '1', defaultSelect: '0' }
       quickCommandData.value = [
-          { name: '介绍一下JeecgBoot', descr: "请介绍一下JeecgBoot" },
-          { name: 'JEECG的优势？', descr: "JEECG有哪些优势？" },
-          { name: 'JEECG可以做什么？', descr: "JEECG可以做哪些事情？" },
-          { name: '创建一个系统用户', descr: "请创建一个系统用户，具体信息如下：\n" +
-              "账号 zhangsan2，密码 Abc123456，姓名张三，邮箱 zhangsan@example.com，手机号 13800138000，并赋予 jeecg 角色权限。" },];
+          { name: '山洪调查如何开展', descr: "山洪灾害风险隐患调查是如何开展的？请结合知识库说明技术路线和主要工作步骤。" },
+          { name: '流域风险隐患检索', descr: "请从知识库检索黑峪河流域存在哪些山洪风险隐患，并列出隐患点明细。" },
+          { name: '隐患类型有哪些', descr: "山洪灾害风险隐患调查中，隐患点分为哪些类型？请结合知识库说明各类隐患的判别依据。" },
+          { name: '防范治理建议', descr: "针对山洪灾害风险隐患，在监测预警、工程治理、群测群防方面有哪些防范治理建议？请依据知识库回答。" },];
     }
   });
 

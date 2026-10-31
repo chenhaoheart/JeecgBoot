@@ -422,7 +422,7 @@ shreport:
   agent:
     model-id: '2099900548148649986'
   knowledge:
-    enabled: true
+    enabled: false
     id: '2099990000000000101'   # 山洪调查成果（import_sh_survey_kb.py）
     top-number: 3
     similarity: 0.45
@@ -443,11 +443,11 @@ shreport:
   # 并发控制：大模型处理耗时较长，并发过高会在模型侧排队超时（提示"当前用户较多，排队中"）
   concurrency:
     # 同时执行的报告任务数（整份报告 / 单章重新生成，跨AI助手与后台入口全局生效）
-    max-running-tasks: 2
+    max-running-tasks: 100
     # 同时调用大模型的章节数。2026-10 实测 plan 端点 ark-code-latest 6 路并发稳定
     # （每路仍 ~55 tok/s，无排队报错），6 章 + 第 7 章可一波跑完；
     # 若模型侧重新出现"排队中"报错，先回调到 4 或 2
-    max-llm-calls: 6
+    max-llm-calls: 9
     # 拿不到大模型调用额度时的最长等待时间（秒）
     llm-wait-seconds: 600
   map:
@@ -463,3 +463,14 @@ shreport:
     root-path: 'D:\甘肃\审核汇集2025\甘肃审核汇集2025一期126'
     # 预览允许的扩展名白名单（小写，逗号分隔）
     allowed-ext: jpg,jpeg,png,webp,bmp,mp4,mov,webm
+  material:
+    enabled: true
+    max-size-mb: 50
+    parse-thread: 2
+    excel-max-rows: 200
+    excel-max-chars: 12000
+    doc-max-chars: 20000
+    chapter-max-chars: 5000
+    per-file-chars: 2000
+    vision-model-id: ''
+    vision-timeout-seconds: 120

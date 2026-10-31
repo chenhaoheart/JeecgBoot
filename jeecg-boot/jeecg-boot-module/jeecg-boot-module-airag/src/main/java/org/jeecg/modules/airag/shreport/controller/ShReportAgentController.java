@@ -128,7 +128,7 @@ public class ShReportAgentController {
         return Result.OK(agentService.bindWatershed(conversationId, lybm, lymc));
     }
 
-    /** 页面模型选择：modelId 传空串表示恢复系统默认模型 */
+    /** 页面模型选择：modelId 传空串表示恢复系统默认模型；thought 为思考深度 off/standard/deep，不传则不修改 */
     @PostMapping("/bindModel")
     public Result<JSONObject> bindModel(@RequestBody Map<String, String> body) {
         String conversationId = body.get("conversationId");
@@ -136,7 +136,7 @@ public class ShReportAgentController {
             return Result.error("conversationId 不能为空");
         }
         try {
-            return Result.OK(agentService.bindModel(conversationId, body.get("modelId"), body.get("modelLabel")));
+            return Result.OK(agentService.bindModel(conversationId, body.get("modelId"), body.get("modelLabel"), body.get("thought")));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         }

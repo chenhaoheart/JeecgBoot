@@ -44,6 +44,8 @@ function createReportSession() {
   const boundWatershed = ref<{ lybm: string; lymc: string } | null>(null);
   const modelOptions = ref<IAgentModel[]>([]);
   const currentModelId = ref<string | undefined>(undefined);
+  /** 思考深度（ZCode thought level）：off 关闭 / standard 展示推理 / deep 展示推理+深入引导 */
+  const thoughtLevel = ref<string>('off');
   const watersheds = ref<IWatershed[]>([]);
   const chapters = ref<IChapter[]>([]);
   const issues = ref<IQcIssue[]>([]);
@@ -432,6 +434,7 @@ function createReportSession() {
         applyWatershed({ lybm: ctx.lybm, lymc: ctx.lymc || ctx.wsmc || ctx.lybm }, false, true);
       }
       currentModelId.value = ctx?.modelId || undefined;
+      thoughtLevel.value = ctx?.thought || 'off';
       applyUsage(ctx?.usage);
       const s = activeSession();
       if (s) {
@@ -471,6 +474,21 @@ function createReportSession() {
     } catch {
       // 绑定失败回滚选择
       currentModelId.value = activeSession()?.modelId;
+    }
+  }
+
+  /** 思考深度切换：绑定到当前会话（只传 thought，不动模型绑定），下一条消息生效 */
+  async function onThoughtChange(level: string) {
+    if (!conversationId.value) {
+      return;
+    }
+    const prev = thoughtLevel.value;
+    thoughtLevel.value = level;
+    try {
+      await bindModel(conversationId.value, undefined, undefined, level);
+    } catch {
+      // 绑定失败回滚选择
+      thoughtLevel.value = prev;
     }
   }
 
@@ -1186,6 +1204,8 @@ let sessionEpoch = Date.now();
     boundWatershed,
     modelOptions,
     currentModelId,
+    thoughtLevel,
+    onThoughtChange,
     watersheds,
     chapters,
     issueMap,

@@ -374,21 +374,39 @@ public class ShReportAgentService {
         return ctx;
     }
 
-    /** 页面模型选择：绑定已激活模型；modelId 传空表示恢复系统默认 */
-    public JSONObject bindModel(String conversationId, String modelId, String modelLabel) {
+    /** 页面模型选择：绑定已激活模型；modelId 传 null 表示不修改模型、空串表示恢复系统默认 */
+    public JSONObject bindModel(String conversationId, String modelId, String modelLabel, String thought) {
         JSONObject ctx = sessionStore.getOrCreate(conversationId, null);
-        if (modelId == null || modelId.isBlank()) {
-            ctx.remove("modelId");
-            ctx.remove("modelLabel");
-        } else {
-            if (!modelVariantService.isModelActive(modelId.trim())) {
-                throw new IllegalArgumentException("模型不存在或未激活：" + modelId);
+        if (modelId != null) {
+            if (modelId.isBlank()) {
+                ctx.remove("modelId");
+                ctx.remove("modelLabel");
+            } else {
+                if (!modelVariantService.isModelActive(modelId.trim())) {
+                    throw new IllegalArgumentException("模型不存在或未激活：" + modelId);
+                }
+                ctx.put("modelId", modelId.trim());
+                ctx.put("modelLabel", modelLabel);
             }
-            ctx.put("modelId", modelId.trim());
-            ctx.put("modelLabel", modelLabel);
         }
+        applyThought(ctx, thought);
         sessionStore.save(conversationId, ctx);
         return ctx;
+    }
+
+    /** 思考深度档位（ZCode 式 thought level）：off 关闭 / standard 展示推理 / deep 展示推理+深入引导 */
+    private static final java.util.Set<String> THOUGHT_LEVELS = java.util.Set.of("off", "standard", "deep");
+
+    /** 应用思考深度：thought 为 null 表示不修改，空串/非法值按 off 处理 */
+    private void applyThought(JSONObject ctx, String thought) {
+        if (thought == null) {
+            return;
+        }
+        String t = thought.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!THOUGHT_LEVELS.contains(t)) {
+            t = "off";
+        }
+        ctx.put("thought", t);
     }
 
     /** 本会话实际生效的模型：会话选择优先，其次配置项，最后系统默认（返回 null） */
@@ -438,6 +456,7 @@ public class ShReportAgentService {
         out.put("wsmc", ctx.getString("wsmc"));
         out.put("modelId", ctx.getString("modelId"));
         out.put("modelLabel", ctx.getString("modelLabel"));
+        out.put("thought", ctx.getString("thought"));
         JSONObject usage = usageTracker.snapshot(conversationId);
         if (usage != null) {
             out.put("usage", usage);
@@ -1195,10 +1214,21 @@ public class ShReportAgentService {
 
     /**
      * 把大模型 TokenStream 逐段推成 SSE delta；阻塞到结束，供当前请求线程写完再 done。
+     * 思考深度（会话 ctx.thought）：off 关闭（推理内容丢弃，默认）；standard/deep 以 SSE thinking
+     * 事件推送推理过程，deep 档额外注入系统提示引导更充分的推理。
      */
     private void streamLlmTokens(String conversationId, JSONObject ctx, List<ChatMessage> messages,
                                  AIChatParams params, String scene, SseEmitter emitter, Object sseLock) {
         String modelId = resolveModelId(ctx);
+        String thought = ctx == null ? null : ctx.getString("thought");
+        boolean showThinking = "standard".equals(thought) || "deep".equals(thought);
+        params.setNoThinking(!showThinking);
+        if ("deep".equals(thought)) {
+            List<ChatMessage> hinted = new ArrayList<>(messages.size() + 1);
+            hinted.add(SystemMessage.from("请在回答前进行深入、细致的推理分析，梳理关键数据与逻辑后再给出最终结论。"));
+            hinted.addAll(messages);
+            messages = hinted;
+        }
         TokenStream stream;
         try {
             stream = empty(modelId)
@@ -1237,6 +1267,10 @@ public class ShReportAgentService {
                         return;
                     }
                     if (thinking.get()) {
+                        // 推理过程：思考深度开启时以 thinking 事件透传，前端折叠展示；关闭时丢弃
+                        if (showThinking) {
+                            sendEvent(emitter, sseLock, "thinking", token);
+                        }
                         return;
                     }
                     anyDelta.set(true);

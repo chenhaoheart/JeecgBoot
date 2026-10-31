@@ -209,6 +209,8 @@ export const getContext = (conversationId: string) =>
     wsmc?: string;
     modelId?: string;
     modelLabel?: string;
+    /** 思考深度：off 关闭 / standard 展示推理 / deep 展示推理+深入引导 */
+    thought?: string;
     usage?: IUsage;
     materials?: IMaterial[];
     materialPending?: number;
@@ -220,9 +222,27 @@ export const getContext = (conversationId: string) =>
 /** 会话可用模型列表（已激活） */
 export const getAgentModels = () => defHttp.get<IAgentModel[]>({ url: Api.models });
 
-/** 绑定会话使用的模型（modelId 传空串恢复系统默认） */
-export const bindModel = (conversationId: string, modelId: string, modelLabel?: string) =>
-  defHttp.post({ url: Api.bindModel, params: { conversationId, modelId, modelLabel } });
+/**
+ * 绑定会话使用的模型与思考深度。
+ * - modelId：传模型 id，传空串恢复系统默认，不传该键则不修改模型绑定
+ * - thought：off / standard / deep，不传该键则不修改
+ */
+export const bindModel = (
+  conversationId: string,
+  modelId?: string,
+  modelLabel?: string,
+  thought?: string
+) => {
+  const params: Recordable = { conversationId };
+  if (modelId !== undefined) {
+    params.modelId = modelId;
+    params.modelLabel = modelLabel || '';
+  }
+  if (thought !== undefined) {
+    params.thought = thought;
+  }
+  return defHttp.post({ url: Api.bindModel, params });
+};
 
 /** 显式绑定流域（面板选择/消歧点选后持久化到会话） */
 export const bindWatershed = (conversationId: string, lybm: string, lymc: string) =>

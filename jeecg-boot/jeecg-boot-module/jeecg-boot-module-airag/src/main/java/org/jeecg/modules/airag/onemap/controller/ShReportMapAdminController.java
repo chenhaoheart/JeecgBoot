@@ -9,6 +9,7 @@ import org.jeecg.modules.airag.onemap.service.ShReportKgRelationService;
 import org.jeecg.modules.airag.onemap.service.ShReportKnowledgeGraphService;
 import org.jeecg.modules.airag.onemap.service.ShReportMapAdminService;
 import org.jeecg.modules.airag.onemap.service.ShReportMapImportService;
+import org.jeecg.modules.airag.onemap.service.ShReportMapSpatialImportService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,6 +37,9 @@ public class ShReportMapAdminController {
 
     @Autowired
     private ShReportMapImportService importService;
+
+    @Autowired
+    private ShReportMapSpatialImportService spatialImportService;
 
     @Autowired
     private ShReportKnowledgeGraphService knowledgeGraphService;
@@ -295,6 +299,22 @@ public class ShReportMapAdminController {
             return Result.error(e.getMessage());
         } catch (Exception e) {
             log.error("一张图数据 Excel 导入失败 ds={}", ds, e);
+            return Result.error("导入失败：" + e.getMessage());
+        }
+    }
+
+    @Operation(summary = "空间数据导入（Shapefile zip / GeoJSON；几何直接入库；mode/年份语义同 Excel 导入）")
+    @PostMapping("/import/spatial")
+    public Result<Map<String, Object>> importSpatial(@RequestParam String ds,
+                                                     @RequestParam int year,
+                                                     @RequestParam(defaultValue = "append") String mode,
+                                                     @RequestParam("file") MultipartFile file) {
+        try {
+            return Result.OK(spatialImportService.importSpatial(ds, year, mode, file));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("一张图空间数据导入失败 ds={}", ds, e);
             return Result.error("导入失败：" + e.getMessage());
         }
     }

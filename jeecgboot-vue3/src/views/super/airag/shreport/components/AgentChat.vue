@@ -19,43 +19,109 @@
         </div>
       </div>
 
-      <div v-for="(msg, index) in visibleMessages" :key="index" class="chat-message" :class="msg.role">
-        <div v-if="msg.role === 'assistant'" class="msg-avatar ai"><RobotOutlined /></div>
-        <div class="msg-main">
-          <div class="chat-bubble">
-            <ShMarkdown v-if="msg.role === 'assistant'" :value="msg.content" />
-            <span v-if="msg.role === 'assistant' && msg.__streaming" class="stream-caret"></span>
-            <template v-else-if="msg.role === 'user'">{{ msg.content }}</template>
-            <!-- 一期成果知识库参考来源 -->
-            <div v-if="msg.role === 'assistant' && msg.sources && msg.sources.length" class="kb-sources">
-              <div class="kb-sources-title"><FileSearchOutlined /> 一期调查成果参考来源</div>
-              <div v-for="(s, si) in msg.sources" :key="si" class="kb-source-item">
-                <span class="kb-source-name">《{{ s.docName }}》</span>
-                <span v-if="s.score != null" class="kb-source-score">相似度 {{ s.score }}</span>
+      <template v-for="g in renderGroups" :key="g.key">
+        <!-- 执行过程块：连续的章节进度消息折叠成一张 ZCode 风格的「工具调用」卡片 -->
+        <div v-if="g.kind === 'steps'" class="chat-message assistant">
+          <div class="msg-avatar ai"><RobotOutlined /></div>
+          <div class="msg-main">
+            <div class="steps-block">
+              <div class="steps-head" @click="toggleSteps(g)">
+                <span v-if="g.running" class="steps-spin"><LoadingOutlined /></span>
+                <span v-else-if="g.failed" class="steps-badge fail"><CloseOutlined /></span>
+                <span v-else class="steps-badge ok"><CheckOutlined /></span>
+                <span class="steps-title">执行过程</span>
+                <span class="steps-sub">{{ stepsDone(g) }}/{{ g.items.length }} 项完成</span>
+                <DownOutlined class="steps-caret" :class="{ open: !stepsCollapsed(g) }" />
+              </div>
+              <div v-show="!stepsCollapsed(g)" class="steps-body">
+                <div v-for="s in g.items" :key="s.id" class="step-row" :class="'is-' + rowState(s)">
+                  <span class="step-icon">
+                    <LoadingOutlined v-if="rowState(s) === 'run'" />
+                    <CloseOutlined v-else-if="rowState(s) === 'fail'" />
+                    <ClockCircleOutlined v-else-if="rowState(s) === 'halt'" />
+                    <CheckOutlined v-else />
+                  </span>
+                  <span class="step-text">{{ stepText(s) }}</span>
+                </div>
               </div>
             </div>
-            <!-- 流域多候选点选 -->
-            <div v-if="msg.role === 'assistant' && msg.choices && msg.choices.length" class="choose-list">
-              <a-button v-for="c in msg.choices" :key="c.lybm" size="small" class="choose-btn" @click="chooseWatershed(c)">
-                <template #icon><EnvironmentOutlined /></template>
-                {{ c.lymc }}（{{ c.lybm }}）
-              </a-button>
-            </div>
           </div>
-          <!-- 消息时间戳（与 /ai 助手一致）；历史占位时间不展示 -->
-          <p v-if="msgDate(msg)" class="msg-date" :class="msg.role">
-            <span>{{ msg.role === 'user' ? '我' : 'AI助手' }}</span><span>{{ msgDate(msg) }}</span>
-          </p>
         </div>
-        <div v-if="msg.role === 'user'" class="msg-avatar me"><UserOutlined /></div>
-      </div>
+        <!-- AI 回复：白底气泡，底部角色/时间/悬浮操作 -->
+        <div v-else-if="g.msg.role === 'assistant'" class="chat-message assistant">
+          <div class="msg-avatar ai"><RobotOutlined /></div>
+          <div class="msg-main">
+            <div class="chat-bubble" :class="{ 'is-error': isError(g.msg) }">
+              <!-- 推理过程（思考深度开启时）：ZCode 式折叠块，回答开始后自动收起 -->
+              <div v-if="g.msg.__thinking" class="think-block">
+                <div class="think-head" @click="toggleThink(g.msg)">
+                  <BulbOutlined class="think-ic" :class="{ run: g.msg.__thinkingActive }" />
+                  <span class="think-title">{{ g.msg.__thinkingActive ? '思考中…' : '已深度思考' }}</span>
+                  <DownOutlined class="think-caret" :class="{ open: thinkIsOpen(g.msg) }" />
+                </div>
+                <div v-show="thinkIsOpen(g.msg)" class="think-body">{{ g.msg.__thinking }}</div>
+              </div>
+              <ShMarkdown :value="g.msg.content" />
+              <span v-if="g.msg.__streaming" class="stream-caret"></span>
+              <!-- 一期成果知识库参考来源 -->
+              <div v-if="g.msg.sources && g.msg.sources.length" class="kb-sources">
+                <div class="kb-sources-title"><FileSearchOutlined /> 一期调查成果参考来源</div>
+                <div v-for="(s, si) in g.msg.sources" :key="si" class="kb-source-item">
+                  <span class="kb-source-name">《{{ s.docName }}》</span>
+                  <span v-if="s.score != null" class="kb-source-score">相似度 {{ s.score }}</span>
+                </div>
+              </div>
+              <!-- 流域多候选点选 -->
+              <div v-if="g.msg.choices && g.msg.choices.length" class="choose-list">
+                <a-button v-for="c in g.msg.choices" :key="c.lybm" size="small" class="choose-btn" @click="chooseWatershed(c)">
+                  <template #icon><EnvironmentOutlined /></template>
+                  {{ c.lymc }}（{{ c.lybm }}）
+                </a-button>
+              </div>
+            </div>
+            <p class="msg-date assistant">
+              <span>AI助手</span>
+              <span v-if="msgDate(g.msg)">{{ msgDate(g.msg) }}</span>
+              <span class="msg-actions">
+                <a-tooltip title="复制内容">
+                  <span class="act" @click="copyText(g.msg.content)"><CopyOutlined /></span>
+                </a-tooltip>
+                <a-tooltip v-if="canRegenerate(g.msg)" title="重新生成（重发上一条消息）">
+                  <span class="act" @click="regenerateFrom(g.msg)"><RedoOutlined /></span>
+                </a-tooltip>
+              </span>
+            </p>
+          </div>
+        </div>
+        <!-- 用户消息：蓝色气泡靠右 -->
+        <div v-else class="chat-message user">
+          <div class="msg-main">
+            <div class="chat-bubble user-bubble">{{ g.msg.content }}</div>
+            <p class="msg-date user">
+              <span>我</span>
+              <span v-if="msgDate(g.msg)">{{ msgDate(g.msg) }}</span>
+              <span class="msg-actions">
+                <a-tooltip title="复制内容">
+                  <span class="act" @click="copyText(g.msg.content)"><CopyOutlined /></span>
+                </a-tooltip>
+                <a-tooltip title="重发这条消息">
+                  <span class="act" @click="resendUser(g.msg)"><RedoOutlined /></span>
+                </a-tooltip>
+              </span>
+            </p>
+          </div>
+          <div class="msg-avatar me"><UserOutlined /></div>
+        </div>
+      </template>
 
-      <!-- 处理中：打字动画（内容已开始流式输出时隐藏） -->
+      <!-- 处理中：打字动画气泡（内容已开始流式输出时隐藏） -->
       <div v-if="showTyping" class="chat-message assistant">
         <div class="msg-avatar ai"><RobotOutlined /></div>
-        <div class="chat-bubble typing-bubble">
-          <span class="typing-dots"><i></i><i></i><i></i></span>
-          <span class="typing-text">{{ typingText }}</span>
+        <div class="msg-main">
+          <div class="chat-bubble typing-bubble">
+            <span class="typing-dots"><i></i><i></i><i></i></span>
+            <span class="typing-text">{{ typingText }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -74,99 +140,156 @@
       <div v-if="attachChips.length" class="attach-chips">
         <a-tag v-for="c in attachChips" :key="c" closable @close="detachChip(c)">{{ c }}</a-tag>
       </div>
+      <!-- 排队任务：生成中输入并回车的消息在此排队，当前轮次结束后自动依次发出 -->
+      <div v-if="pendingQueue.length" class="queue-chips">
+        <div v-for="q in pendingQueue" :key="q.id" class="queue-chip">
+          <ClockCircleOutlined class="queue-icon" />
+          <span class="queue-text" :title="q.text">{{ q.text }}</span>
+          <CloseOutlined class="queue-remove" @click="removeQueued(q.id)" />
+        </div>
+      </div>
       <a-textarea
         v-model:value="inputText"
         :bordered="false"
         :auto-size="{ minRows: 2, maxRows: 5 }"
-        placeholder="告诉我你的需求，例如：帮我生成XX流域的整份报告 / 当前有多少小流域 / 修改第三章，表格再细化一些 / 查看当前报告进度"
-        @keydown.enter.shift.prevent="onSend"
+        :placeholder="loading ? '正在生成…现在输入并按 Enter 会排队，本轮结束后自动发出（Esc 停止生成）' : composerPlaceholder"
+        @keydown.enter="onComposerEnter"
+        @keydown.esc="onComposerEsc"
       />
+      <!-- 隐藏的文件/文件夹选择入口（+ 号菜单触发） -->
+      <input ref="fileInputRef" type="file" multiple :accept="materialAccept" style="display: none" @change="onFilesPicked" />
+      <input ref="folderInputRef" type="file" multiple webkitdirectory style="display: none" @change="onFilesPicked" />
       <div class="composer-foot">
-        <!-- Token 消耗统计入口：点击弹出本会话累计用量明细 -->
-        <a-popover v-model:open="usageOpen" trigger="click" placement="top" overlay-class-name="sh-usage-popover">
-          <template #content>
-            <div class="usage-panel">
-              <div class="usage-head">
-                <span class="usage-title">Token 消耗统计</span>
-                <span class="usage-sub">本会话累计</span>
+        <div class="foot-left">
+          <!-- + 号：添加文件/文件夹作为流域资料（ZCode 上下文添加习惯） -->
+          <a-dropdown :trigger="['click']" placement="topLeft">
+            <a-button size="small" type="text" class="foot-btn" title="添加文件 / 文件夹">
+              <PlusOutlined />
+            </a-button>
+            <template #overlay>
+              <a-menu @click="onPlusMenu">
+                <a-menu-item key="file">
+                  <FileTextOutlined />
+                  上传文件
+                </a-menu-item>
+                <a-menu-item key="folder">
+                  <FolderOutlined />
+                  上传文件夹
+                </a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+          <!-- 模型 + 思考深度：合并到一个面板（新版 ZCode 习惯），chip 显示当前组合 -->
+          <a-popover v-model:open="modelPanelOpen" trigger="click" placement="topLeft" overlay-class-name="sh-model-panel">
+            <template #content>
+              <div class="model-panel">
+                <div class="mp-section">
+                  <div class="mp-title">模型<span class="mp-sub">按当前会话生效，章节生成自动套用</span></div>
+                  <div class="mp-row" :class="{ active: !currentModelId }" @click="onModelChange(undefined)">
+                    <span class="mp-name">默认模型</span>
+                    <CheckOutlined v-if="!currentModelId" class="mp-check" />
+                  </div>
+                  <div v-for="m in modelOptions" :key="m.id" class="mp-row" :class="{ active: m.id === currentModelId }" @click="onModelChange(m.id)">
+                    <span class="mp-name">{{ m.name }}</span>
+                    <CheckOutlined v-if="m.id === currentModelId" class="mp-check" />
+                  </div>
+                </div>
+                <div class="mp-section">
+                  <div class="mp-title">思考深度</div>
+                  <div class="mp-row" :class="{ active: thoughtLevel === 'off' }" @click="onThoughtChange('off')">
+                    <BulbOutlined class="opt-ic" />
+                    <span class="mp-name">关闭思考</span>
+                    <span class="mp-desc">直接回答，不展示推理</span>
+                    <CheckOutlined v-if="thoughtLevel === 'off'" class="mp-check" />
+                  </div>
+                  <div class="mp-row" :class="{ active: thoughtLevel === 'standard' }" @click="onThoughtChange('standard')">
+                    <BulbOutlined class="opt-ic on" />
+                    <span class="mp-name">思考 · 标准</span>
+                    <span class="mp-desc">回答前展示推理过程</span>
+                    <CheckOutlined v-if="thoughtLevel === 'standard'" class="mp-check" />
+                  </div>
+                  <div class="mp-row" :class="{ active: thoughtLevel === 'deep' }" @click="onThoughtChange('deep')">
+                    <BulbOutlined class="opt-ic deep" />
+                    <span class="mp-name">思考 · 深度</span>
+                    <span class="mp-desc">引导更充分的分析推理</span>
+                    <CheckOutlined v-if="thoughtLevel === 'deep'" class="mp-check" />
+                  </div>
+                </div>
               </div>
-              <template v-if="usageTotal > 0">
-                <div class="usage-total">
-                  <span class="usage-total-num">{{ formatTokens(usageData?.totalTokens) }}</span>
-                  <span class="usage-calls">{{ usageData?.calls || 0 }} 次模型调用</span>
+            </template>
+            <button type="button" class="model-chip" :disabled="loading" title="模型与思考深度">
+              <span class="chip-model">{{ currentModelLabel }}</span>
+              <span class="chip-sep">·</span>
+              <span class="chip-thought" :class="'lv-' + thoughtLevel">
+                <BulbOutlined />
+                {{ thoughtLabel }}
+              </span>
+              <DownOutlined class="chip-caret" />
+            </button>
+          </a-popover>
+          <!-- Token 消耗圆环：紧随模型设置之后（ZCode 布局），点击弹出用量明细 -->
+          <a-popover v-model:open="usageOpen" trigger="click" placement="top" overlay-class-name="sh-usage-popover">
+            <template #content>
+              <div class="usage-panel">
+                <div class="usage-head">
+                  <span class="usage-title">Token 消耗统计</span>
+                  <span class="usage-sub">本会话累计</span>
                 </div>
-                <div class="usage-bar">
-                  <span class="usage-bar-in" :style="{ width: usageInPercent + '%' }"></span>
-                </div>
-                <div class="usage-breakdown">
-                  <span class="dot in"></span>输入 {{ formatTokens(usageData?.inputTokens) }}
-                  <span class="dot out"></span>输出 {{ formatTokens(usageData?.outputTokens) }}
-                </div>
-                <div class="usage-detail">
-                  <div v-if="usageData?.scenes?.intent" class="usage-row">
-                    <span>意图解析</span><span>{{ usageData.scenes.intent.calls }} 次 · {{ formatTokens(sumTokens(usageData.scenes.intent)) }}</span>
+                <template v-if="usageTotal > 0">
+                  <div class="usage-total">
+                    <span class="usage-total-num">{{ formatTokens(usageData?.totalTokens) }}</span>
+                    <span class="usage-calls">{{ usageData?.calls || 0 }} 次模型调用</span>
                   </div>
-                  <div v-if="usageData?.scenes?.outline" class="usage-row">
-                    <span>大纲润色</span><span>{{ usageData.scenes.outline.calls }} 次 · {{ formatTokens(sumTokens(usageData.scenes.outline)) }}</span>
+                  <div class="usage-bar">
+                    <span class="usage-bar-in" :style="{ width: usageInPercent + '%' }"></span>
                   </div>
-                  <div v-for="(item, no) in usageData?.chapters || {}" :key="no" class="usage-row">
-                    <span>{{ chapterName(Number(no)) }}</span>
-                    <span>{{ item.calls }} 次 · {{ formatTokens(sumTokens(item)) }}</span>
+                  <div class="usage-breakdown">
+                    <span class="dot in"></span>输入 {{ formatTokens(usageData?.inputTokens) }}
+                    <span class="dot out"></span>输出 {{ formatTokens(usageData?.outputTokens) }}
                   </div>
-                </div>
-                <div v-if="usageData?.lastModel" class="usage-model">最近模型：{{ modelLabel(usageData.lastModel) }}</div>
-                <div v-if="usageData?.estimated" class="usage-est">部分调用未返回用量，已按字符数估算</div>
-              </template>
-              <div v-else class="usage-empty">本会话还没有模型调用记录</div>
-            </div>
-          </template>
-          <a-button v-if="usageTotal > 0" size="small" type="text" class="usage-chip">
-            <template #icon><FundOutlined /></template>
-            {{ formatTokens(usageData?.totalTokens) }} tokens
-          </a-button>
-        </a-popover>
-        <!-- 模型选择（会话级）：意图解析与章节生成都使用该模型 -->
-        <div class="composer-model">
-          <a-tooltip title="按当前会话生效，章节生成自动套用">
-            <span class="cm-select-wrap">
-              <a-select
-                :value="currentModelId"
-                size="small"
-                class="cm-select"
-                :disabled="loading"
-                placeholder="系统默认"
-                allow-clear
-                @change="onModelChange"
-              >
-                <a-select-option v-for="m in modelOptions" :key="m.id" :value="m.id" :label="m.name">
-                  {{ m.name }}
-                </a-select-option>
-              </a-select>
+                  <div class="usage-detail">
+                    <div v-if="usageData?.scenes?.intent" class="usage-row">
+                      <span>意图解析</span><span>{{ usageData.scenes.intent.calls }} 次 · {{ formatTokens(sumTokens(usageData.scenes.intent)) }}</span>
+                    </div>
+                    <div v-if="usageData?.scenes?.outline" class="usage-row">
+                      <span>大纲润色</span><span>{{ usageData.scenes.outline.calls }} 次 · {{ formatTokens(sumTokens(usageData.scenes.outline)) }}</span>
+                    </div>
+                    <div v-for="(item, no) in usageData?.chapters || {}" :key="no" class="usage-row">
+                      <span>{{ chapterName(Number(no)) }}</span>
+                      <span>{{ item.calls }} 次 · {{ formatTokens(sumTokens(item)) }}</span>
+                    </div>
+                  </div>
+                  <div v-if="usageData?.lastModel" class="usage-model">最近模型：{{ modelLabel(usageData.lastModel) }}</div>
+                  <div v-if="usageData?.estimated" class="usage-est">部分调用未返回用量，已按字符数估算</div>
+                </template>
+                <div v-else class="usage-empty">本会话还没有模型调用记录</div>
+              </div>
+            </template>
+            <span class="usage-ring" :class="{ hot: usagePercent >= 80 }" title="Token 消耗统计">
+              <svg viewBox="0 0 20 20">
+                <circle class="ring-bg" cx="10" cy="10" r="7.5" />
+                <circle class="ring-in" cx="10" cy="10" r="7.5" :stroke-dasharray="ringDash" />
+              </svg>
+            </span>
+          </a-popover>
+        </div>
+        <div class="foot-right">
+          <!-- 发送/停止共用一个按钮，按状态切换 -->
+          <a-tooltip v-if="loading" title="停止生成（Esc）">
+            <a-button size="small" danger class="send-btn" @click="onCancel">
+              <template #icon><StopOutlined /></template>
+              停止
+            </a-button>
+          </a-tooltip>
+          <a-tooltip v-else :title="pendingQueue.length ? `Enter 发送 · 已排队 ${pendingQueue.length} 条` : 'Enter 发送，Shift + Enter 换行'">
+            <span class="send-btn-wrap">
+              <a-button type="primary" class="send-btn" :disabled="!inputText.trim()" @click="onSend">
+                <template #icon><SendOutlined /></template>
+                发送
+              </a-button>
             </span>
           </a-tooltip>
         </div>
-        <a-tooltip :title="boundWatershed?.lybm ? '上传流域资料' : '请先绑定流域后再上传资料'">
-          <a-upload :accept="materialAccept" :show-upload-list="false" :disabled="!boundWatershed?.lybm || loading" :custom-request="onAttach">
-            <a-button size="small" type="text" :disabled="!boundWatershed?.lybm || loading">
-              <template #icon><PaperClipOutlined /></template>
-            </a-button>
-          </a-upload>
-        </a-tooltip>
-        <!-- 发送/停止共用一个按钮，按状态切换 -->
-        <a-tooltip v-if="loading" title="停止生成">
-          <a-button size="small" danger class="send-btn" @click="onCancel">
-            <template #icon><StopOutlined /></template>
-            停止
-          </a-button>
-        </a-tooltip>
-        <a-tooltip v-else title="Shift + Enter 发送">
-          <span class="send-btn-wrap">
-            <a-button type="primary" class="send-btn" :disabled="!inputText.trim()" @click="onSend">
-              <template #icon><SendOutlined /></template>
-              发送
-            </a-button>
-          </span>
-        </a-tooltip>
       </div>
     </div>
   </div>
@@ -177,12 +300,20 @@
   import {
     ArrowDownOutlined,
     ArrowUpOutlined,
+    BulbOutlined,
+    CheckOutlined,
+    ClockCircleOutlined,
+    CloseOutlined,
+    CopyOutlined,
     DatabaseOutlined,
+    DownOutlined,
     EnvironmentOutlined,
     FileSearchOutlined,
     FileTextOutlined,
-    FundOutlined,
-    PaperClipOutlined,
+    FolderOutlined,
+    LoadingOutlined,
+    PlusOutlined,
+    RedoOutlined,
     RobotOutlined,
     SendOutlined,
     StopOutlined,
@@ -225,6 +356,8 @@
     modelOptions,
     currentModelId,
     onModelChange,
+    thoughtLevel,
+    onThoughtChange,
     usage,
     applyUsage,
   } = useReportSession();
@@ -233,21 +366,57 @@
   const attachChips = ref<string[]>([]);
   const messagesRef = ref<HTMLElement>();
   const usageOpen = ref(false);
+  const fileInputRef = ref<HTMLInputElement>();
+  const folderInputRef = ref<HTMLInputElement>();
 
-  async function onAttach(req: any) {
+  /** + 号菜单：上传文件 / 上传文件夹（作为流域资料，需先绑定流域） */
+  function onPlusMenu({ key }: { key: string | number }) {
     if (!boundWatershed.value?.lybm) {
-      message.warning('请先绑定流域');
-      req.onError?.(new Error('未绑定流域'));
+      message.warning('请先绑定流域后再上传资料');
       return;
     }
-    try {
-      await uploadMaterial(req.file, conversationId.value);
-      attachChips.value = [...attachChips.value, req.file.name];
-      req.onSuccess?.({});
-      message.success('资料已上传，正在解析');
-    } catch (e: any) {
-      req.onError?.(e);
-      message.error(e?.message || '上传失败');
+    (key === 'folder' ? folderInputRef : fileInputRef).value?.click();
+  }
+
+  /** 批量上传选中的文件/文件夹内容（逐个走资料上传接口并挂 chips） */
+  async function onFilesPicked(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const files = Array.from(input.files || []);
+    input.value = '';
+    if (!files.length) {
+      return;
+    }
+    if (!boundWatershed.value?.lybm) {
+      message.warning('请先绑定流域');
+      return;
+    }
+    const MAX_FILES = 30;
+    const MAX_TOTAL = 200 * 1024 * 1024;
+    if (files.length > MAX_FILES) {
+      message.warning(`一次最多上传 ${MAX_FILES} 个文件，已截断`);
+    }
+    const list = files.slice(0, MAX_FILES);
+    const total = list.reduce((n, f) => n + f.size, 0);
+    if (total > MAX_TOTAL) {
+      message.error('文件总大小超过 200MB，请分批上传');
+      return;
+    }
+    let ok = 0;
+    let fail = 0;
+    for (const f of list) {
+      try {
+        await uploadMaterial(f, conversationId.value);
+        attachChips.value = [...attachChips.value, f.name];
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+    if (ok) {
+      message.success(`已上传 ${ok} 个资料，正在解析`);
+    }
+    if (fail) {
+      message.warning(`${fail} 个文件上传失败`);
     }
   }
 
@@ -273,6 +442,40 @@
     }
     return Math.round(((usage.value?.inputTokens || 0) / total) * 100);
   });
+
+  /** Token 用量圆环（ZCode 上下文圆环）：按 128k 上下文窗口估算占用比例 */
+  const CONTEXT_BUDGET = 128000;
+  const RING_CIRC = 2 * Math.PI * 7.5;
+  const usagePercent = computed(() => Math.min(100, Math.round((usageTotal.value / CONTEXT_BUDGET) * 100)));
+  const ringDash = computed(() => `${((RING_CIRC * usagePercent.value) / 100).toFixed(2)} ${RING_CIRC.toFixed(2)}`);
+
+  // ------------------------------------------------ 推理过程折叠块（思考深度开启时）
+
+  const thinkManual = ref<Record<string, boolean>>({});
+
+  /** 模型+思考深度合并面板（新版 ZCode 习惯） */
+  const modelPanelOpen = ref(false);
+
+  const currentModelLabel = computed(() => {
+    if (currentModelId.value) {
+      return modelOptions.value.find((m) => m.id === currentModelId.value)?.name || currentModelId.value;
+    }
+    return '默认模型';
+  });
+
+  const THOUGHT_LABELS: Record<string, string> = { off: '关闭思考', standard: '思考·标准', deep: '思考·深度' };
+  const thoughtLabel = computed(() => THOUGHT_LABELS[thoughtLevel.value] || '关闭思考');
+
+  /** 展开状态：用户手动切换过用手动值，否则跟随接收状态（接收中展开，结束收起） */
+  function thinkIsOpen(m: IChatMsg) {
+    const k = m.id || '';
+    return thinkManual.value[k] !== undefined ? thinkManual.value[k] : !!m.__thinkingActive;
+  }
+
+  function toggleThink(m: IChatMsg) {
+    const k = m.id || '';
+    thinkManual.value[k] = !thinkIsOpen(m);
+  }
 
   /** 1 万以上按「万」展示，与 zcode 网页版习惯一致 */
   function formatTokens(n?: number) {
@@ -302,6 +505,93 @@
     activeMessages.value.filter((m) => !(m.content || '').startsWith('你好，我是**山洪报告生成助手**'))
   );
 
+  type RenderItem =
+    | { kind: 'msg'; key: string; msg: IChatMsg }
+    | { kind: 'steps'; key: string; items: IChatMsg[]; running: boolean; failed: boolean };
+
+  /** 轮次是否仍在进行：停止/断开后，进度行停留在"生成中"的过程块要按已结束收尾 */
+  const turnActive = computed(() => loading.value || !!activeSession()?.generating);
+
+  /**
+   * 渲染分组：连续的章节进度消息（__progress）折叠成一个「执行过程」卡片，
+   * 与 ZCode 的工具调用块一致；其余消息按原样渲染。
+   */
+  const renderGroups = computed<RenderItem[]>(() => {
+    const groups: RenderItem[] = [];
+    let cur: Extract<RenderItem, { kind: 'steps' }> | null = null;
+    for (const m of visibleMessages.value) {
+      if (m.__progress) {
+        if (!cur) {
+          cur = { kind: 'steps', key: 'steps-' + (m.id || 't' + m.time), items: [], running: false, failed: false };
+          groups.push(cur);
+        }
+        cur.items.push(m);
+        const st = stepState(m);
+        cur.running = cur.running || (st === 'run' && turnActive.value);
+        cur.failed = cur.failed || st === 'fail';
+      } else {
+        cur = null;
+        groups.push({ kind: 'msg', key: m.id || 't' + m.time, msg: m });
+      }
+    }
+    return groups;
+  });
+
+  /** 进度行状态：从文本里的 emoji/关键词推断（消息内容保持原样，保证多窗口合并兼容） */
+  function stepState(m: IChatMsg): 'run' | 'fail' | 'done' {
+    const c = m.content || '';
+    if (c.includes('❌') || c.includes('失败')) {
+      return 'fail';
+    }
+    if (c.includes('⏳') || c.includes('生成中')) {
+      return 'run';
+    }
+    return 'done';
+  }
+
+  /** 行渲染状态：轮次已结束但进度行还停在"生成中"时按中断（halt）展示，不继续转圈 */
+  function rowState(m: IChatMsg): 'run' | 'fail' | 'done' | 'halt' {
+    const st = stepState(m);
+    return st === 'run' && !turnActive.value ? 'halt' : st;
+  }
+
+  function stepText(m: IChatMsg): string {
+    return (m.content || '').replace(/^[⏳✅❌]+\s*/, '');
+  }
+
+  function stepsDone(g: { items: IChatMsg[] }) {
+    return g.items.filter((s) => stepState(s) === 'done').length;
+  }
+
+  const stepsCollapsedMap = ref<Record<string, boolean>>({});
+  const autoCollapsed = new Set<string>();
+
+  function stepsCollapsed(g: { key: string }) {
+    return !!stepsCollapsedMap.value[g.key];
+  }
+
+  function toggleSteps(g: { key: string }) {
+    stepsCollapsedMap.value[g.key] = !stepsCollapsedMap.value[g.key];
+  }
+
+  /** ZCode 习惯：进行中的过程块保持展开，全部结束后自动收起；已自动收起的组不再反复弹开 */
+  watch(renderGroups, (groups) => {
+    for (const g of groups) {
+      if (g.kind !== 'steps') {
+        continue;
+      }
+      if (g.running) {
+        if (autoCollapsed.has(g.key)) {
+          autoCollapsed.delete(g.key);
+          stepsCollapsedMap.value[g.key] = false;
+        }
+      } else if (!autoCollapsed.has(g.key)) {
+        autoCollapsed.add(g.key);
+        stepsCollapsedMap.value[g.key] = true;
+      }
+    }
+  });
+
   /** 无任何可见消息（新会话）时展示欢迎区 */
   const showHero = computed(() => visibleMessages.value.length === 0);
 
@@ -328,17 +618,8 @@
         title: '生成整份报告',
         desc: hasWs ? `为「${ws!.lymc}」依次生成 7 个章节` : '发送后助手会引导你确认流域',
         run: () => {
-          consume(
-            hasWs ? `帮我生成${ws!.lymc}的整份报告` : '帮我生成整份报告',
-            (signal, requestId) =>
-              sendChatMessage(
-                conversationId.value,
-                hasWs ? `帮我生成${ws!.lymc}的整份报告` : '帮我生成整份报告',
-                batchNo.value,
-                signal,
-                requestId
-              )
-          );
+          const text = hasWs ? `帮我生成${ws!.lymc}的整份报告` : '帮我生成整份报告';
+          routeSend(text, (signal, requestId) => sendChatMessage(conversationId.value, text, batchNo.value, signal, requestId));
         },
       },
       {
@@ -346,17 +627,8 @@
         title: '先出大纲',
         desc: hasWs ? `确认提纲后再分章撰写「${ws!.lymc}」` : '发送后助手会引导你确认流域',
         run: () => {
-          consume(
-            hasWs ? `先出一份${ws!.lymc}的报告大纲` : '先出一份报告大纲',
-            (signal, requestId) =>
-              sendChatMessage(
-                conversationId.value,
-                hasWs ? `先出一份${ws!.lymc}的报告大纲` : '先出一份报告大纲',
-                batchNo.value,
-                signal,
-                requestId
-              )
-          );
+          const text = hasWs ? `先出一份${ws!.lymc}的报告大纲` : '先出一份报告大纲';
+          routeSend(text, (signal, requestId) => sendChatMessage(conversationId.value, text, batchNo.value, signal, requestId));
         },
       },
       {
@@ -364,7 +636,7 @@
         title: '查看当前进度',
         desc: '查询当前批次的章节状态清单',
         run: () => {
-          consume('查看当前报告进度', (signal, requestId) => sendChatMessage(conversationId.value, '查看当前报告进度', batchNo.value, signal, requestId));
+          routeSend('查看当前报告进度', (signal, requestId) => sendChatMessage(conversationId.value, '查看当前报告进度', batchNo.value, signal, requestId));
         },
       },
       {
@@ -372,9 +644,8 @@
         title: '查流域数据',
         desc: '查询小流域数量与防治对象县区分布',
         run: () => {
-          consume('当前有多少小流域？防治对象按县区分布是怎样的？', (signal, requestId) =>
-            sendChatMessage(conversationId.value, '当前有多少小流域？防治对象按县区分布是怎样的？', batchNo.value, signal, requestId)
-          );
+          const text = '当前有多少小流域？防治对象按县区分布是怎样的？';
+          routeSend(text, (signal, requestId) => sendChatMessage(conversationId.value, text, batchNo.value, signal, requestId));
         },
       },
     ];
@@ -431,25 +702,148 @@
     onSend();
   }
 
+  const composerPlaceholder =
+    '告诉我你的需求，例如：帮我生成XX流域的整份报告 / 当前有多少小流域 / 修改第三章，表格再细化一些 / 查看当前报告进度';
+
+  /** Enter 直接发送（ZCode 习惯）；输入法组合中不拦截；Shift+Enter 保留换行 */
+  function onComposerEnter(e: KeyboardEvent) {
+    if (e.shiftKey || e.isComposing || e.keyCode === 229) {
+      return;
+    }
+    e.preventDefault();
+    onSend();
+  }
+
+  /** Esc 停止当前生成（ZCode 习惯） */
+  function onComposerEsc() {
+    if (loading.value) {
+      onCancel();
+    }
+  }
+
   async function onSend() {
     const content = inputText.value.trim();
-    if (!content || loading.value) {
+    if (!content) {
       return;
     }
     inputText.value = '';
-    await consume(content, (signal, requestId) => sendChatMessage(conversationId.value, content, batchNo.value, signal, requestId));
+    routeSend(content);
+  }
+
+  // ------------------------------------------------ 消息操作：复制 / 重发 / 重新生成
+
+  function isError(m: IChatMsg) {
+    return (m.content || '').startsWith('⚠️');
+  }
+
+  async function copyText(text: string) {
+    if (!text) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // 非安全上下文（http）下剪贴板 API 不可用，退回 execCommand
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } catch {
+        // 忽略
+      }
+      document.body.removeChild(ta);
+    }
+    message.success('已复制');
+  }
+
+  /** 最后一条 AI 回复才提供「重新生成」，避免历史消息误触 */
+  const lastAssistantId = computed(() => {
+    for (let i = visibleMessages.value.length - 1; i >= 0; i--) {
+      const m = visibleMessages.value[i];
+      if (m.role === 'assistant' && !m.__progress) {
+        return m.id;
+      }
+    }
+    return undefined;
+  });
+
+  function canRegenerate(m: IChatMsg) {
+    return !!m.id && m.id === lastAssistantId.value && !loading.value;
+  }
+
+  /** 重新生成：重发该回复前最近的一条用户消息（ZCode 的 retry 语义） */
+  function regenerateFrom(m: IChatMsg) {
+    const msgs = activeMessages.value;
+    const idx = msgs.findIndex((x) => x.id === m.id);
+    if (idx < 0) {
+      return;
+    }
+    for (let i = idx - 1; i >= 0; i--) {
+      const text = msgs[i].role === 'user' ? (msgs[i].content || '').trim() : '';
+      if (text) {
+        routeSend(text);
+        return;
+      }
+    }
+    message.warning('没有找到可以重发的消息');
+  }
+
+  function resendUser(m: IChatMsg) {
+    const text = (m.content || '').trim();
+    if (text) {
+      routeSend(text);
+    }
+  }
+
+  // ------------------------------------------------ 排队发送：生成中的输入不丢，本轮结束自动发出
+
+  const pendingQueue = ref<{ id: string; text: string }[]>([]);
+
+  function enqueueQueued(text: string) {
+    pendingQueue.value.push({ id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, text });
+  }
+
+  function removeQueued(id: string) {
+    pendingQueue.value = pendingQueue.value.filter((q) => q.id !== id);
+  }
+
+  function pumpQueue() {
+    if (loading.value || !pendingQueue.value.length) {
+      return;
+    }
+    const next = pendingQueue.value.shift()!;
+    consume(next.text, (signal, requestId) =>
+      sendChatMessage(conversationId.value, next.text, batchNo.value, signal, requestId)
+    );
+  }
+
+  /** 统一发送入口：空闲直接发，生成中入队（ZCode queued messages） */
+  function routeSend(content: string, starter?: (signal: AbortSignal, requestId: string) => Promise<Response | any>) {
+    const text = (content || '').trim();
+    if (!text) {
+      return;
+    }
+    if (loading.value) {
+      enqueueQueued(text);
+      return;
+    }
+    consume(text, starter || ((signal, requestId) => sendChatMessage(conversationId.value, text, batchNo.value, signal, requestId)));
   }
 
   /** 外部触发（地图点选生成 / 路由 query）：走同一条 SSE 消费链路 */
   async function sendText(content: string) {
     const text = (content || '').trim();
-    if (!text || loading.value) {
+    if (!text) {
       return;
     }
     if (!conversationId.value) {
       await init();
     }
-    await consume(text, (signal, requestId) => sendChatMessage(conversationId.value, text, batchNo.value, signal, requestId));
+    routeSend(text);
   }
 
   /** 大纲确认后放行生成：用户侧追加确认语并复用同一条 SSE 读取链路 */
@@ -529,6 +923,11 @@
       if (lastMsg?.__streaming) {
         delete lastMsg.__streaming;
       }
+      for (const m of msgs) {
+        if ((m as any).__thinkingActive) {
+          delete (m as any).__thinkingActive;
+        }
+      }
       // 必须写回归属会话：流式期间用户可能已切到其他会话，
       // 走 activeSession() 会把本会话的消息数组整个赋给别的会话，造成串会话
       if (session) {
@@ -539,6 +938,8 @@
       // SSE 可能漏掉 refresh：流结束后再拉一次章节，避免右侧一直空白
       emit('refresh', batchNo.value);
       scrollToBottom();
+      // ZCode 习惯：本轮结束自动发出排队中的下一条消息
+      pumpQueue();
     }
   }
 
@@ -578,6 +979,9 @@
     for (const m of activeMessages.value) {
       if ((m as any).__streaming) {
         delete (m as any).__streaming;
+      }
+      if ((m as any).__thinkingActive) {
+        delete (m as any).__thinkingActive;
       }
     }
     emit('refresh', batchNo.value);
@@ -655,6 +1059,9 @@
     const handleEvent = (event: string, data: string) => {
       if (event === 'text') {
         const msg = ensureAssistant();
+        if ((msg as any).__thinkingActive) {
+          (msg as any).__thinkingActive = false;
+        }
         reply += (reply ? '\n\n' : '') + data;
         msg.content = reply;
         deltaStarted = false;
@@ -664,6 +1071,10 @@
       } else if (event === 'delta') {
         // 模型 token：接到同一条气泡末尾，不额外空行
         const msg = ensureAssistant();
+        if ((msg as any).__thinkingActive) {
+          // 回答开始，推理结束：思考块自动收起
+          (msg as any).__thinkingActive = false;
+        }
         if (!deltaStarted && msg.content) {
           msg.content += '\n\n';
           reply = msg.content;
@@ -671,6 +1082,14 @@
         deltaStarted = true;
         reply += data;
         msg.content = reply;
+        touchSession();
+        triggerRef(activeMessages);
+        scrollToBottom();
+      } else if (event === 'thinking') {
+        // 思考深度开启时模型的推理过程：累积到 __thinking，回答开始前保持展开
+        const msg = ensureAssistant();
+        (msg as any).__thinking = ((msg as any).__thinking || '') + data;
+        (msg as any).__thinkingActive = true;
         touchSession();
         triggerRef(activeMessages);
         scrollToBottom();
@@ -749,6 +1168,9 @@
           if ((m as any).__streaming) {
             delete (m as any).__streaming;
           }
+          if ((m as any).__thinkingActive) {
+            delete (m as any).__thinkingActive;
+          }
         }
         finished = true;
       }
@@ -786,6 +1208,9 @@
       const last = msgs[msgs.length - 1];
       if (last && (last as any).__streaming) {
         delete (last as any).__streaming;
+      }
+      if (last && (last as any).__thinkingActive) {
+        delete (last as any).__thinkingActive;
       }
     };
     while (!finished) {
@@ -910,6 +1335,7 @@
       session.generating = false;
       emit('refresh', batchNo.value);
       scrollToBottom();
+      pumpQueue();
     }
   }
 
@@ -972,6 +1398,151 @@
       flex: 1;
       overflow-y: auto;
       padding: 16px 18px;
+
+      /* 执行过程块：章节生成进度的 ZCode 工具调用风格卡片 */
+      .steps-block {
+        width: 100%;
+        max-width: 560px;
+        border: 1px solid #e2e9f5;
+        border-left: 3px solid @primary-color;
+        border-radius: 10px;
+        background: #fbfcfe;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(16, 33, 61, 0.04);
+
+        .steps-head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 7px 12px;
+          cursor: pointer;
+          user-select: none;
+          font-size: 12px;
+          color: #475467;
+          background: #f5f8fc;
+          transition: background-color 0.15s;
+
+          &:hover {
+            background: #eef3fa;
+          }
+
+          .steps-spin {
+            color: @primary-color;
+            font-size: 12px;
+            animation: steps-rotate 1s linear infinite;
+            display: inline-flex;
+          }
+
+          .steps-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            font-size: 10px;
+            color: #fff;
+
+            &.ok {
+              background: #52c41a;
+            }
+
+            &.fail {
+              background: #ff4d4f;
+            }
+          }
+
+          .steps-title {
+            font-weight: 600;
+            color: #344054;
+          }
+
+          .steps-sub {
+            color: #98a2b3;
+          }
+
+          .steps-caret {
+            margin-left: auto;
+            font-size: 10px;
+            color: #98a2b3;
+            transition: transform 0.2s;
+
+            &.open {
+              transform: rotate(180deg);
+            }
+          }
+        }
+
+        .steps-body {
+          padding: 6px 12px 8px;
+
+          .step-row {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            padding: 4px 0;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #475467;
+
+            & + .step-row {
+              border-top: 1px dashed #eef1f6;
+            }
+
+            .step-icon {
+              flex: 0 0 auto;
+              display: inline-flex;
+              align-items: center;
+              font-size: 11px;
+
+              .anticon {
+                transform: translateY(1px);
+              }
+            }
+
+            &.is-run {
+              .step-icon {
+                color: @primary-color;
+
+                .anticon {
+                  animation: steps-rotate 1s linear infinite;
+                }
+              }
+            }
+
+            &.is-done {
+              .step-icon {
+                color: #52c41a;
+              }
+            }
+
+            &.is-halt {
+              .step-icon {
+                color: #98a2b3;
+              }
+
+              .step-text {
+                color: #98a2b3;
+              }
+            }
+
+            &.is-fail {
+              .step-icon {
+                color: #ff4d4f;
+              }
+
+              .step-text {
+                color: #b42318;
+              }
+            }
+
+            .step-text {
+              min-width: 0;
+              word-break: break-word;
+            }
+          }
+        }
+      }
 
       /* 欢迎区 */
       .chat-hero {
@@ -1066,10 +1637,20 @@
 
       .chat-message {
         display: flex;
-        margin-bottom: 14px;
+        margin-bottom: 18px;
 
         &:last-child {
           margin-bottom: 0;
+        }
+
+        &:hover {
+          .msg-actions {
+            opacity: 1 !important;
+          }
+        }
+
+        &.user {
+          justify-content: flex-end;
         }
 
         .msg-avatar {
@@ -1096,35 +1677,14 @@
           }
         }
 
-        &.user {
-          justify-content: flex-end;
-
-          .chat-bubble {
-            background: @primary-color;
-            color: #fff;
-            border-radius: 12px 3px 12px 12px;
-          }
-        }
-
         .msg-main {
           display: flex;
           flex-direction: column;
           max-width: 82%;
           min-width: 0;
-
-          .msg-date {
-            display: flex;
-            gap: 6px;
-            margin: 3px 2px 0;
-            font-size: 11px;
-            color: #98a2b3;
-
-            &.user {
-              justify-content: flex-end;
-            }
-          }
         }
 
+        /* AI 回复：白底气泡（原样式），内含思考折叠块/知识库来源/流域点选 */
         .chat-bubble {
           max-width: 100%;
           padding: 9px 13px;
@@ -1135,6 +1695,12 @@
           line-height: 1.7;
           box-shadow: 0 1px 2px rgba(16, 33, 61, 0.03);
 
+          /* 错误气泡：淡红底色提示，可一键重试 */
+          &.is-error {
+            background: #fff7f6;
+            border-color: #ffccc7;
+          }
+
           .stream-caret {
             display: inline-block;
             width: 7px;
@@ -1143,6 +1709,66 @@
             vertical-align: -2px;
             background: @primary-color;
             animation: stream-caret-blink 0.9s step-end infinite;
+          }
+
+          /* 推理过程折叠块（思考深度开启时） */
+          .think-block {
+            margin-bottom: 8px;
+            border: 1px solid #eceff5;
+            border-radius: 8px;
+            background: #fafbfd;
+            overflow: hidden;
+
+            .think-head {
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              padding: 5px 10px;
+              cursor: pointer;
+              user-select: none;
+              font-size: 12px;
+              color: #667085;
+              transition: background-color 0.15s;
+
+              &:hover {
+                background: #f2f5fa;
+              }
+
+              .think-ic {
+                font-size: 12px;
+                color: #98a2b3;
+
+                &.run {
+                  color: @primary-color;
+                  animation: steps-rotate 1.2s linear infinite;
+                }
+              }
+
+              .think-title {
+                font-weight: 500;
+              }
+
+              .think-caret {
+                margin-left: auto;
+                font-size: 10px;
+                color: #98a2b3;
+                transition: transform 0.2s;
+
+                &.open {
+                  transform: rotate(180deg);
+                }
+              }
+            }
+
+            .think-body {
+              padding: 6px 12px 9px;
+              border-top: 1px dashed #eef1f6;
+              font-size: 12px;
+              line-height: 1.8;
+              color: #667085;
+              white-space: pre-wrap;
+              word-break: break-word;
+            }
           }
 
           .choose-list {
@@ -1197,7 +1823,7 @@
             }
           }
 
-          /* 打字动画 */
+          /* 打字动画气泡 */
           &.typing-bubble {
             display: flex;
             align-items: center;
@@ -1231,6 +1857,59 @@
             }
           }
         }
+
+        /* 用户消息：蓝色气泡 */
+        .chat-bubble.user-bubble {
+          align-self: flex-end;
+          max-width: 100%;
+          padding: 9px 13px;
+          border-radius: 12px 3px 12px 12px;
+          background: @primary-color;
+          color: #fff;
+          word-break: break-word;
+          line-height: 1.7;
+          white-space: pre-wrap;
+          box-shadow: 0 1px 2px rgba(16, 33, 61, 0.12);
+        }
+
+        /* 用户消息底部 meta（角色+时间+悬浮操作） */
+        .msg-date {
+          display: flex;
+          gap: 6px;
+          margin: 3px 2px 0;
+          font-size: 11px;
+          color: #98a2b3;
+          align-items: center;
+
+          &.user {
+            justify-content: flex-end;
+          }
+
+          .msg-actions {
+            display: inline-flex;
+            gap: 2px;
+            opacity: 0;
+            transition: opacity 0.15s;
+
+            .act {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              width: 20px;
+              height: 20px;
+              border-radius: 5px;
+              cursor: pointer;
+              color: #98a2b3;
+              font-size: 12px;
+              transition: all 0.15s;
+
+              &:hover {
+                color: @primary-color;
+                background: fade(@primary-color, 10%);
+              }
+            }
+          }
+        }
       }
     }
 
@@ -1244,6 +1923,51 @@
         flex-wrap: wrap;
         gap: 4px;
         margin-bottom: 6px;
+      }
+
+      /* 排队任务 chips：生成中回车的消息，本轮结束后自动发出 */
+      .queue-chips {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 6px;
+
+        .queue-chip {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 8px;
+          border-radius: 8px;
+          background: #f5f8fc;
+          border: 1px dashed #d6e0ef;
+          font-size: 12px;
+          color: #475467;
+
+          .queue-icon {
+            color: @primary-color;
+            font-size: 12px;
+          }
+
+          .queue-text {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+          }
+
+          .queue-remove {
+            flex: 0 0 auto;
+            color: #98a2b3;
+            font-size: 11px;
+            cursor: pointer;
+            transition: color 0.15s;
+
+            &:hover {
+              color: #ff4d4f;
+            }
+          }
+        }
       }
       padding: 8px 12px 10px;
       border-radius: 12px;
@@ -1262,73 +1986,134 @@
         background: transparent;
       }
 
-      /* 模型选择（底部操作栏、发送按钮前） */
-      .composer-model {
-        display: flex;
-        align-items: center;
-
-        .cm-select {
-          min-width: 96px;
-          max-width: 220px;
-
-          :deep(.ant-select-selector) {
-            border: none !important;
-            box-shadow: none !important;
-            background: transparent !important;
-            border-radius: 6px;
-            padding: 0 22px 0 8px;
-            height: 24px;
-            color: #8a909c;
-            font-size: 12px;
-            transition: background-color 0.2s, color 0.2s;
-          }
-
-          :deep(.ant-select-selection-item),
-          :deep(.ant-select-selection-placeholder) {
-            color: #8a909c;
-            font-size: 12px;
-            line-height: 24px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-
-          :deep(.ant-select-arrow) {
-            color: #a8adb8;
-            font-size: 10px;
-          }
-
-          &:hover :deep(.ant-select-selector) {
-            background: #f2f3f7 !important;
-            color: #4b5563;
-          }
-
-          &.ant-select-focused :deep(.ant-select-selector) {
-            background: #f2f3f7 !important;
-          }
-
-          :deep(.ant-select-selection-item) {
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-        }
-      }
-
+      /* 底部操作栏：左（+/模型/思考深度）右（token 圆环/发送）两组，ZCode 布局 */
       .composer-foot {
         display: flex;
         align-items: center;
-        justify-content: flex-end;
+        justify-content: space-between;
         gap: 8px;
         padding-top: 6px;
         border-top: 1px solid #f2f4f7;
 
-        .usage-chip {
+        .foot-left,
+        .foot-right {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          min-width: 0;
+        }
+
+        .foot-btn {
           color: #667085;
-          font-size: 11px;
-          padding: 0 6px;
 
           &:hover {
             color: @primary-color;
             background: fade(@primary-color, 8%);
+          }
+        }
+
+        /* 模型+思考深度合并 chip（点击弹出统一面板） */
+        .model-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          height: 24px;
+          padding: 0 8px;
+          border: none;
+          background: transparent;
+          border-radius: 6px;
+          cursor: pointer;
+          max-width: 260px;
+          overflow: hidden;
+          font-size: 12px;
+          color: #8a909c;
+          transition: background-color 0.2s, color 0.2s;
+
+          &:hover:not(:disabled),
+          &:focus-visible {
+            background: #f2f3f7;
+            color: #4b5563;
+          }
+
+          &:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+          }
+
+          .chip-model {
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            min-width: 0;
+          }
+
+          .chip-sep {
+            color: #c3c9d4;
+          }
+
+          .chip-thought {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            white-space: nowrap;
+
+            .anticon {
+              font-size: 11px;
+            }
+
+            &.lv-standard {
+              color: @primary-color;
+            }
+
+            &.lv-deep {
+              color: #722ed1;
+            }
+          }
+
+          .chip-caret {
+            font-size: 9px;
+            color: #a8adb8;
+          }
+        }
+
+        /* Token 用量圆环：填充比例 = 会话累计 / 128k 上下文估算 */
+        .usage-ring {
+          display: inline-flex;
+          width: 22px;
+          height: 22px;
+          cursor: pointer;
+          margin-right: 4px;
+
+          svg {
+            width: 100%;
+            height: 100%;
+          }
+
+          circle {
+            fill: none;
+            stroke-width: 2.4;
+
+            &.ring-bg {
+              stroke: #e5eaf2;
+            }
+
+            &.ring-in {
+              stroke: @primary-color;
+              stroke-linecap: round;
+              transform: rotate(-90deg);
+              transform-origin: center;
+              transition: stroke-dasharray 0.4s;
+            }
+          }
+
+          &.hot .ring-in {
+            stroke: #fa8c16;
+          }
+
+          &:hover {
+            .ring-bg {
+              stroke: #d6e0ef;
+            }
           }
         }
 
@@ -1360,12 +2145,108 @@
       opacity: 0;
     }
   }
+
+  @keyframes steps-rotate {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
 </style>
 
 <style lang="less">
+  /* 模型+思考深度合并面板（popover 渲染在组件外，必须用非 scoped 全局样式） */
+  .sh-model-panel {
+    .model-panel {
+      min-width: 250px;
+      font-size: 13px;
+
+      .mp-section {
+        padding: 4px 0 6px;
+
+        & + .mp-section {
+          border-top: 1px solid #f2f4f7;
+        }
+      }
+
+      .mp-title {
+        padding: 4px 10px 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #344054;
+
+        .mp-sub {
+          margin-left: 8px;
+          font-weight: 400;
+          font-size: 11px;
+          color: #98a2b3;
+        }
+      }
+
+      .mp-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        cursor: pointer;
+        border-radius: 8px;
+        transition: background-color 0.15s;
+
+        &:hover {
+          background: #f5f8fc;
+        }
+
+        &.active {
+          background: fade(@primary-color, 6%);
+        }
+
+        .mp-name {
+          font-size: 13px;
+          color: #344054;
+          white-space: nowrap;
+        }
+
+        .mp-desc {
+          flex: 1;
+          min-width: 0;
+          font-size: 11px;
+          color: #98a2b3;
+          text-align: right;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .mp-check {
+          color: @primary-color;
+          font-size: 12px;
+        }
+
+        .opt-ic {
+          color: #98a2b3;
+          font-size: 12px;
+
+          &.on {
+            color: @primary-color;
+          }
+
+          &.deep {
+            color: #722ed1;
+          }
+        }
+
+        &.active .mp-name {
+          color: @primary-color;
+          font-weight: 500;
+        }
+      }
+    }
+  }
+
   /* Token 统计弹层（popover 渲染在组件外，必须用非 scoped 全局样式） */
-  .sh-usage-popover {
-    .usage-panel {
+  .sh-usage-popover {    .usage-panel {
       min-width: 260px;
       font-size: 12px;
 

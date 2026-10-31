@@ -34,7 +34,9 @@ CHAPTER_FLOWS = [
     "山洪报告_05历史灾害", "山洪报告_06防治区分析", "山洪报告_07成果与建议",
 ]
 
-PACKET_LINE = "\n\n【实测数据包】{{实测数据包}}\n以上数据包是本章唯一允许使用的事实数据来源，包中没有的数据写「暂无调查数据」，严禁编造或引用其他流域数字。"
+PACKET_LINE_OLD = "以上数据包是本章唯一允许使用的事实数据来源，包中没有的数据写「暂无调查数据」，严禁编造或引用其他流域数字。"
+PACKET_LINE_NEW = "以上数据包是结构化事实的主要来源；用户上传资料为补充或修正，使用规则见补充资料（第5章历史灾害见「历史灾害记录」）。包中与资料中都没有的数据写「暂无调查数据」，严禁编造或引用其他流域数字。"
+PACKET_LINE = "\n\n【实测数据包】{{实测数据包}}\n" + PACKET_LINE_NEW
 OUTLINE_LINE = "\n\n【本章写作提纲】{{写作提纲}}\n请严格按提纲的小节顺序撰写；如与实测数据冲突，以实测数据为准并在文中说明。"
 CH4_LINE = "\n（重要）壅水/溃决计算必须采用实测数据包中给出的设计洪峰流量Q、沟道糙率n、沟道比降S，不得自行假设。"
 
@@ -83,6 +85,9 @@ def patch_design(design_obj_or_str, chapter_no):
             if msg.get("role") != "user":
                 continue
             content = msg.get("content", "")
+            if PACKET_LINE_OLD in content:
+                content = content.replace(PACKET_LINE_OLD, PACKET_LINE_NEW)
+                changed = True
             if "{{实测数据包}}" not in content:
                 content += PACKET_LINE
                 changed = True

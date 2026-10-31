@@ -107,7 +107,7 @@
           />
           <a-button size="small" @click="reload">刷新</a-button>
           <a-button size="small" type="primary" @click="openImport">
-            <UploadOutlined /> 导入 Excel
+            <UploadOutlined /> 导入数据
           </a-button>
           <a-button size="small" danger :disabled="!selectedRowKeys.length" @click="onBatchDelete">
             <DeleteOutlined /> 删除选中 ({{ selectedRowKeys.length }})
@@ -116,7 +116,7 @@
       </div>
       <div class="tb-tip">
         共 {{ total }} 条记录
-        <span v-if="activeDataset?.hasGeom" class="tip-geom">（Excel 导入不含空间几何，导入数据不出现在地图图层，仅进入表格与统计；可在「编辑」中补绘/编辑空间位置）</span>
+        <span v-if="activeDataset?.hasGeom" class="tip-geom">（Excel 导入不含空间几何；带几何批量导入请在导入弹窗选择 Shapefile(.zip) 或 GeoJSON 格式）</span>
       </div>
       <a-table
         :columns="tableColumns"
@@ -224,14 +224,21 @@
     <!-- 导入弹窗 -->
     <a-modal
       v-model:open="importOpen"
-      :title="`导入 ${activeDataset?.label || ''}（Excel .xlsx）`"
-      width="560px"
+      :title="`导入 ${activeDataset?.label || ''}（${importKindTitle}）`"
+      width="620px"
       :confirm-loading="importing"
       ok-text="开始导入"
       cancel-text="取消"
       @ok="submitImport"
     >
       <a-form layout="vertical">
+        <a-form-item v-if="activeDataset?.hasGeom" label="文件格式">
+          <a-radio-group v-model:value="importKind" @change="onImportKindChange">
+            <a-radio value="excel">Excel(.xlsx)</a-radio>
+            <a-radio value="shp">Shapefile(.zip)</a-radio>
+            <a-radio value="geojson">GeoJSON</a-radio>
+          </a-radio-group>
+        </a-form-item>
         <a-form-item label="调查年份（必填，导入数据将标记为该年份）" required>
           <a-input-number v-model:value="importYear" style="width: 100%" :min="1900" :max="2999" placeholder="例如 2024" />
         </a-form-item>
@@ -244,20 +251,31 @@
         <a-form-item label="数据文件">
           <a-upload
             :max-count="1"
-            accept=".xlsx"
+            :accept="importAccept"
             :before-upload="onPickFile"
             :file-list="importFileList"
             @remove="removeFile"
           >
-            <a-button><UploadOutlined /> 选择 Excel 文件</a-button>
+            <a-button><UploadOutlined /> {{ importPickLabel }}</a-button>
           </a-upload>
         </a-form-item>
         <a-alert type="info" show-icon class="import-tip">
-          <template #message>表头支持列名或中文名，识别规则如下：</template>
+          <template #message>{{ importKind === 'excel' ? '表头支持列名或中文名，识别规则如下：' : '字段识别与几何说明：' }}</template>
           <template #description>
-            <div class="import-cols">
-              <span v-for="c in activeDataset?.columns || []" :key="c.col">· {{ c.label }}（{{ c.col }}）</span>
-            </div>
+            <template v-if="importKind === 'excel'">
+              <div class="import-cols">
+                <span v-for="c in activeDataset?.columns || []" :key="c.col">· {{ c.label }}（{{ c.col }}）</span>
+              </div>
+            </template>
+            <template v-else>
+              <div v-if="importKind === 'shp'">· zip 内需包含同名 .shp 与 .dbf（.shx / .prj 可选）</div>
+              <div v-else>· 文件需为 FeatureCollection（或单个 Feature）</div>
+              <div>· 字段按「列名 / 中文列名 / 源字段名（如 WSWSCD、wswscd）」识别，未识别字段忽略</div>
+              <div>· 几何直接入库并显示在地图图层，允许类型：{{ importGeomTypes }}</div>
+              <div class="import-cols">
+                <span v-for="c in activeDataset?.columns || []" :key="c.col">· {{ c.label }}（{{ c.col }}）</span>
+              </div>
+            </template>
           </template>
         </a-alert>
       </a-form>
@@ -282,6 +300,7 @@
     IDataset,
     IFacets,
     importExcel,
+    importSpatial,
     updateGeom,
     updateRow,
   } from './ShMapDataAdmin.api';
@@ -724,22 +743,57 @@
 
   // ---------------------------------------------------------------- Excel 导入
 
+  type ImportKind = 'excel' | 'shp' | 'geojson';
   const importOpen = ref(false);
   const importYear = ref<number | null>(null);
   const importMode = ref<'append' | 'replace'>('append');
+  const importKind = ref<ImportKind>('excel');
   const importFile = ref<File | null>(null);
   const importFileList = ref<any[]>([]);
   const importing = ref(false);
 
+  const importAccept = computed(() =>
+    importKind.value === 'excel' ? '.xlsx' : importKind.value === 'shp' ? '.zip' : '.geojson,.json'
+  );
+  const importKindTitle = computed(() =>
+    importKind.value === 'excel' ? 'Excel .xlsx' : importKind.value === 'shp' ? 'Shapefile .zip' : 'GeoJSON .geojson'
+  );
+  const importPickLabel = computed(() =>
+    importKind.value === 'excel' ? '选择 Excel 文件' : importKind.value === 'shp' ? '选择 Shapefile 压缩包' : '选择 GeoJSON 文件'
+  );
+  const importGeomTypes = computed(() => {
+    if (currentDs.value === 'section') return 'LineString / MultiLineString';
+    if (currentDs.value === 'hazard') return 'Point';
+    return 'Polygon / MultiPolygon';
+  });
+
   function openImport() {
     importYear.value = null;
     importMode.value = 'append';
+    importKind.value = 'excel';
     importFile.value = null;
     importFileList.value = [];
     importOpen.value = true;
   }
 
+  function onImportKindChange() {
+    importFile.value = null;
+    importFileList.value = [];
+  }
+
   function onPickFile(file: File) {
+    const dot = file.name.lastIndexOf('.');
+    const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : '';
+    const ok =
+      importKind.value === 'excel'
+        ? ext === '.xlsx'
+        : importKind.value === 'shp'
+          ? ext === '.zip'
+          : ext === '.geojson' || ext === '.json';
+    if (!ok) {
+      message.warning(`请选择 ${importKindTitle.value} 格式的文件`);
+      return false;
+    }
     importFile.value = file;
     importFileList.value = [{ uid: Date.now(), name: file.name, status: 'done' }];
     return false;
@@ -756,7 +810,7 @@
       return;
     }
     if (!importFile.value) {
-      message.warning('请选择 Excel 文件');
+      message.warning(`请选择${importKind.value === 'excel' ? ' Excel 文件' : importKind.value === 'shp' ? ' Shapefile 压缩包(.zip)' : ' GeoJSON 文件'}`);
       return;
     }
     if (importMode.value === 'replace') {
@@ -778,13 +832,19 @@
     }
     importing.value = true;
     try {
-      const res: any = await importExcel({
+      const payload = {
         ds: currentDs.value,
         year: importYear.value,
         mode: importMode.value,
         file: importFile.value,
-      });
-      message.success(`导入完成：成功 ${res?.imported ?? 0} 条，跳过空行 ${res?.skipped ?? 0} 条`);
+      };
+      const res: any = importKind.value === 'excel' ? await importExcel(payload) : await importSpatial(payload);
+      const failed = res?.failed ?? 0;
+      const skippedLabel = importKind.value === 'excel' ? '跳过空行' : '跳过';
+      message.success(`导入完成：成功 ${res?.imported ?? 0} 条，${skippedLabel} ${res?.skipped ?? 0} 条${failed ? `，失败 ${failed} 条` : ''}`);
+      if (Array.isArray(res?.fields) && res.fields.length) {
+        message.info(`未识别字段（已忽略）：${res.fields.join('、')}`);
+      }
       importOpen.value = false;
       reload();
     } catch (e: any) {
