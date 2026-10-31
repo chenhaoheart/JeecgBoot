@@ -20,6 +20,7 @@ import org.jeecg.common.base.BaseMap;
 import org.jeecg.common.config.TenantContext;
 import org.jeecg.common.constant.CacheConstant;
 import org.jeecg.common.constant.CommonConstant;
+import org.jeecg.common.constant.enums.SysRoleEnum;
 import org.jeecg.common.constant.PasswordConstant;
 import org.jeecg.common.constant.SymbolConstant;
 import org.jeecg.common.modules.redis.client.JeecgRedisClient;
@@ -108,6 +109,9 @@ public class SysUserController {
 
     @Autowired
     private ISysUserTenantService userTenantService;
+
+    @Autowired
+    private ISysTenantPackService sysTenantPackService;
 
     @Autowired
     private JeecgRedisClient jeecgRedisClient;
@@ -1032,8 +1036,17 @@ public class SysUserController {
      * @return
      */
     @GetMapping("/getUserDetailByUserId")
-    public Result<SysUserSysDepPostModel> getUserDetailByUserId(@RequestParam(name = "userId") String userId) {
+    public Result<SysUserSysDepPostModel> getUserDetailByUserId(@RequestParam(name = "userId") String userId, HttpServletRequest request) {
         Result<SysUserSysDepPostModel> result = new Result<SysUserSysDepPostModel>();
+        //update-begin---author:scott ---date:20261014  for：多租户模式下只能查看当前租户的用户详情，防止按userId跨租户读取用户信息-----------
+        if (MybatisPlusSaasConfig.OPEN_SYSTEM_TENANT_CONTROL) {
+            Integer tenantId = oConvertUtils.getInt(TokenUtils.getTenantIdByRequest(request), 0);
+            Integer count = userTenantService.userTenantIzExist(userId, tenantId);
+            if (count == null || count == 0) {
+                return Result.error("未找到对应用户");
+            }
+        }
+        //update-end---author:scott ---date:20261014  for：多租户模式下只能查看当前租户的用户详情，防止按userId跨租户读取用户信息-----------
         try {
             SysUserSysDepPostModel sysDepPostModel = sysUserService.getUserDetailByUserId(userId);
             result.setSuccess(true);
@@ -1377,7 +1390,19 @@ public class SysUserController {
         }
         
         if(!smscode.equals(object.toString())) {
-        	result.setMessage("短信验证码不匹配！");
+            //update-begin---author:scott ---date:20261013  for：【安全 GHSA-wv6f-p5mv-2g6f】验证码错误满5次即作废，防止暴力枚举验证码重置他人密码-----------
+            String errKey = redisKey + ":err";
+            long errCount = redisUtil.incr(errKey, 1);
+            if (errCount == 1) {
+                redisUtil.expire(errKey, 600);
+            }
+            if (errCount >= 5) {
+                redisUtil.del(redisKey, errKey);
+                result.setMessage("短信验证码错误次数过多，请重新获取！");
+            } else {
+                result.setMessage("短信验证码不匹配！");
+            }
+            //update-end---author:scott ---date:20261013  for：【安全 GHSA-wv6f-p5mv-2g6f】验证码错误满5次即作废，防止暴力枚举验证码重置他人密码-----------
             result.setSuccess(false);
             return result;
         }
@@ -1666,6 +1691,12 @@ public class SysUserController {
     @GetMapping("/appQueryByDepartId")
     public Result<List<SysUser>> appQueryByDepartId(@RequestParam(name="departId", required = false) String departId) {
         Result<List<SysUser>> result = new Result<List<SysUser>>();
+        //update-begin---author:scott ---date:20261014  for：多租户模式下部门须属于当前租户（sys_depart已做租户隔离，查不到即非本租户），防止跨租户读取用户信息-----------
+        if (MybatisPlusSaasConfig.OPEN_SYSTEM_TENANT_CONTROL && (oConvertUtils.isEmpty(departId) || sysDepartService.getById(departId) == null)) {
+            result.setResult(new ArrayList<>());
+            return result;
+        }
+        //update-end---author:scott ---date:20261014  for：多租户模式下部门须属于当前租户（sys_depart已做租户隔离，查不到即非本租户），防止跨租户读取用户信息-----------
         List<String> list=new ArrayList<String> ();
         list.add(departId);
         List<SysUser> childrenUser = sysUserService.queryByDepIds(list,null);
@@ -1705,6 +1736,11 @@ public class SysUserController {
             if (oConvertUtils.listIsNotEmpty(userIds)) {
                 queryWrapper.in(SysUser::getId, userIds);
             }
+            //update-begin---author:scott ---date:20261014  for：租户下查不到用户时不再放开过滤，防止跨租户读取用户信息-----------
+            else {
+                queryWrapper.eq(SysUser::getId, "通过租户查询不到任何用户");
+            }
+            //update-end---author:scott ---date:20261014  for：租户下查不到用户时不再放开过滤，防止跨租户读取用户信息-----------
         }
         //------------------------------------------------------------------------------------------------
         Page<SysUser> page = new Page<>(pageNo, pageSize);
@@ -1954,6 +1990,22 @@ public class SysUserController {
      */
     @PutMapping("/batchEditUsers")
     public Result<SysUser> batchEditUsers(@RequestBody JSONObject jsonObject) {
+        //update-begin---author:scott ---date:20261013  for：【安全 GHSA-pjwf-2w2c-xc23/GHSA-4w9p-7gw3-q7v4】批量修改用户部门职位须为admin或当前租户管理员，且租户管理员只能修改本租户用户-----------
+        // 敲敲云SaaS模式下所有用户默认拥有test角色权限，不能用权限码放行，只放行admin
+        if (!SysRoleEnum.hasAnyRole(SysRoleEnum.ADMIN, SysRoleEnum.TENANT_ADMIN)) {
+            String tenantId = TenantContext.getTenant();
+            if (oConvertUtils.isEmpty(tenantId)) {
+                return Result.error("无权限执行此操作");
+            }
+            // 非当前租户的组织账户管理员或超级管理员时抛出异常
+            sysTenantPackService.izHaveManageUserAuth(tenantId);
+            List<String> idList = JSONArray.parseArray(jsonObject.getString("userIds"), String.class);
+            List<String> tenantUserIds = userTenantService.getUserIdsByTenantId(Integer.valueOf(tenantId));
+            if (idList == null || !tenantUserIds.containsAll(idList)) {
+                return Result.error("只能修改当前租户下的用户");
+            }
+        }
+        //update-end---author:scott ---date:20261013  for：【安全 GHSA-pjwf-2w2c-xc23/GHSA-4w9p-7gw3-q7v4】批量修改用户部门职位须为admin或当前租户管理员，且租户管理员只能修改本租户用户-----------
         Result<SysUser> result = new Result<SysUser>();
         try {
             sysUserService.batchEditUsers(jsonObject);
@@ -2006,6 +2058,24 @@ public class SysUserController {
      */
     @PutMapping("/changeDepartChargePerson")
     public Result<?> changeDepartChargePerson(@RequestBody JSONObject json) {
+        //update-begin---author:scott ---date:20261013  for：【安全 GHSA-9xxr-rh33-qr3f】设置部门负责人须为admin或当前租户管理员，且租户管理员只能设置本租户的部门和用户-----------
+        // 敲敲云SaaS模式下所有用户默认拥有test角色权限(含system:depart:edit)，不能用权限码放行，只放行admin
+        if (!SysRoleEnum.hasAnyRole(SysRoleEnum.ADMIN, SysRoleEnum.TENANT_ADMIN)) {
+            String tenantId = TenantContext.getTenant();
+            if (oConvertUtils.isEmpty(tenantId)) {
+                return Result.error("无权限执行此操作");
+            }
+            // 非当前租户的组织账户管理员或超级管理员时抛出异常
+            sysTenantPackService.izHaveManageUserAuth(tenantId);
+            SysDepart depart = sysDepartService.getById(json.getString("departId"));
+            // 开启系统租户隔离时，部门须属于当前租户（未开启时部门不区分租户）
+            boolean departInTenant = depart != null && (!MybatisPlusSaasConfig.OPEN_SYSTEM_TENANT_CONTROL || tenantId.equals(String.valueOf(depart.getTenantId())));
+            List<String> tenantUserIds = userTenantService.getUserIdsByTenantId(Integer.valueOf(tenantId));
+            if (!departInTenant || !tenantUserIds.contains(json.getString("userId"))) {
+                return Result.error("只能设置当前租户下的部门负责人");
+            }
+        }
+        //update-end---author:scott ---date:20261013  for：【安全 GHSA-9xxr-rh33-qr3f】设置部门负责人须为admin或当前租户管理员，且租户管理员只能设置本租户的部门和用户-----------
         sysUserService.changeDepartChargePerson(json);
         return Result.ok();
     }

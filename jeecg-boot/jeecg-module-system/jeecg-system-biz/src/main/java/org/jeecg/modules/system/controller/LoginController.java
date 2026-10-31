@@ -102,23 +102,22 @@ public class LoginController {
             return result;
         }
 		
-		// step.3 校验用户是否存在且有效
+		//update-begin---author:scott ---date:20261014  for：【安全 GHSA-6mmg-j26w-hxfx】先校验密码再校验用户状态，用户不存在与密码错误统一提示并计入失败次数，防止用户枚举-----------
+		// step.3 校验用户名或密码是否正确
 		LambdaQueryWrapper<SysUser> queryWrapper = new LambdaQueryWrapper<>();
 		queryWrapper.eq(SysUser::getUsername,username);
 		SysUser sysUser = sysUserService.getOne(queryWrapper);
+		if (!sysUserService.verifyLoginPassword(sysUser, username, password)) {
+			result.error500("用户名或密码错误");
+			return result;
+		}
+
+		// step.4 校验用户是否有效
 		result = sysUserService.checkUserIsEffective(sysUser);
 		if(!result.isSuccess()) {
 			return result;
 		}
-
-		// step.4 校验用户名或密码是否正确
-		String userpassword = PasswordUtil.encrypt(username, password, sysUser.getSalt());
-		String syspassword = sysUser.getPassword();
-		if (!syspassword.equals(userpassword)) {
-			addLoginFailOvertimes(username);
-			result.error500("用户名或密码错误");
-			return result;
-		}
+		//update-end---author:scott ---date:20261014  for：【安全 GHSA-6mmg-j26w-hxfx】先校验密码再校验用户状态，用户不存在与密码错误统一提示并计入失败次数，防止用户枚举-----------
 
 		// step.5 登录成功获取用户信息
 		String loginOrgCode = sysLoginModel.getLoginOrgCode();
@@ -164,6 +163,9 @@ public class LoginController {
 			log.debug("2 获取用户信息耗时 (首页面配置)" + (System.currentTimeMillis() - start) + "毫秒");
 			
 			obj.put("userInfo",sysUser);
+			//update-begin---author:scott ---date:20261013  for：【issues/9838】返回字典版本号；先取版本号再查字典，避免期间字典变更导致前端拿到新版本号+旧数据-----------
+			obj.put("dictVersion", sysDictService.getDictVersion());
+			//update-end---author:scott ---date:20261013  for：【issues/9838】返回字典版本号；先取版本号再查字典，避免期间字典变更导致前端拿到新版本号+旧数据-----------
 			obj.put("sysAllDictItems", sysDictService.queryAllDictItems());
 			log.debug("3 获取用户信息耗时 (字典数据)" + (System.currentTimeMillis() - start) + "毫秒");
 
@@ -376,6 +378,14 @@ public class LoginController {
 			result.setSuccess(false);
 			return result;
 		}
+		//update-begin---author:scott ---date:20261013  for：【安全 GHSA-5qr3-c98m-9767】增加按手机号限流，不依赖客户端IP-----------
+		if(!DySmsLimit.canSendSmsToPhone(mobile)){
+			result.setMessage("短信发送过于频繁，请稍后再试！");
+			result.setCode(CommonConstant.PHONE_SMS_FAIL_CODE);
+			result.setSuccess(false);
+			return result;
+		}
+		//update-end---author:scott ---date:20261013  for：【安全 GHSA-5qr3-c98m-9767】增加按手机号限流，不依赖客户端IP-----------
 		//-------------------------------------------------------------------------------------
 
 		//随机数
@@ -561,6 +571,9 @@ public class LoginController {
 		// 5.vue3版本不加载字典数据，vue2下加载字典
 		String vue3Version = request.getHeader(CommonConstant.VERSION);
 		if(oConvertUtils.isEmpty(vue3Version)){
+			//update-begin---author:scott ---date:20261013  for：【issues/9838】返回字典版本号；先取版本号再查字典，避免期间字典变更导致前端拿到新版本号+旧数据-----------
+			obj.put("dictVersion", sysDictService.getDictVersion());
+			//update-end---author:scott ---date:20261013  for：【issues/9838】返回字典版本号；先取版本号再查字典，避免期间字典变更导致前端拿到新版本号+旧数据-----------
 			obj.put("sysAllDictItems", sysDictService.queryAllDictItems());
 		}
 		
@@ -691,21 +704,21 @@ public class LoginController {
 		if(isLoginFailOvertimes(username)){
 			return result.error500("该用户登录失败次数过多，请于10分钟后再次登录！");
 		}
-		// 2.校验用户是否有效
+		//update-begin---author:scott ---date:20261014  for：【安全 GHSA-6mmg-j26w-hxfx】先校验密码再校验用户状态，用户不存在与密码错误统一提示并计入失败次数，防止用户枚举-----------
+		// 2.校验用户名或密码是否正确
 		SysUser sysUser = sysUserService.getUserByName(username);
+		if (!sysUserService.verifyLoginPassword(sysUser, username, password)) {
+			result.error500("用户名或密码错误");
+			return result;
+		}
+		String syspassword = sysUser.getPassword();
+
+		// 3.校验用户是否有效
 		result = sysUserService.checkUserIsEffective(sysUser);
 		if(!result.isSuccess()) {
 			return result;
 		}
-		
-		// 3.校验用户名或密码是否正确
-		String userpassword = PasswordUtil.encrypt(username, password, sysUser.getSalt());
-		String syspassword = sysUser.getPassword();
-		if (!syspassword.equals(userpassword)) {
-			addLoginFailOvertimes(username);
-			result.error500("用户名或密码错误");
-			return result;
-		}
+		//update-end---author:scott ---date:20261014  for：【安全 GHSA-6mmg-j26w-hxfx】先校验密码再校验用户状态，用户不存在与密码错误统一提示并计入失败次数，防止用户枚举-----------
 		
 		//4.设置登录部门
 		String orgCode = sysUser.getOrgCode();
@@ -835,16 +848,9 @@ public class LoginController {
 	 * @param username
 	 * @return
 	 */
+	//update-begin---author:scott ---date:20261014  for：【安全 GHSA-6mmg-j26w-hxfx】失败计数逻辑移到service，与登录前查部门接口共用-----------
 	private boolean isLoginFailOvertimes(String username){
-		String key = CommonConstant.LOGIN_FAIL + username;
-		Object failTime = redisUtil.get(key);
-		if(failTime!=null){
-			Integer val = Integer.parseInt(failTime.toString());
-			if(val>5){
-				return true;
-			}
-		}
-		return false;
+		return sysUserService.isLoginFailOvertimes(username);
 	}
 
 	/**
@@ -852,15 +858,9 @@ public class LoginController {
 	 * @param username
 	 */
 	private void addLoginFailOvertimes(String username){
-		String key = CommonConstant.LOGIN_FAIL + username;
-		Object failTime = redisUtil.get(key);
-		Integer val = 0;
-		if(failTime!=null){
-			val = Integer.parseInt(failTime.toString());
-		}
-		// 10分钟，一分钟为60s
-		redisUtil.set(key, ++val, 600);
+		sysUserService.addLoginFailOvertimes(username);
 	}
+	//update-end---author:scott ---date:20261014  for：【安全 GHSA-6mmg-j26w-hxfx】失败计数逻辑移到service，与登录前查部门接口共用-----------
 
 	/**
 	 * 发送短信验证码接口(修改密码)
@@ -892,6 +892,13 @@ public class LoginController {
 			result.setSuccess(false);
 			return result;
 		}
+		//update-begin---author:scott ---date:20261013  for：【安全 GHSA-5qr3-c98m-9767】增加按手机号限流-----------
+		if (!DySmsLimit.canSendSmsToPhone(mobile)) {
+			result.setMessage("短信发送过于频繁，请稍后再试！");
+			result.setSuccess(false);
+			return result;
+		}
+		//update-end---author:scott ---date:20261013  for：【安全 GHSA-5qr3-c98m-9767】增加按手机号限流-----------
 		//随机数
 		String captcha = RandomUtil.randomNumbers(6);
 		JSONObject obj = new JSONObject();
@@ -977,6 +984,9 @@ public class LoginController {
             result.setCode(HttpStatus.PRECONDITION_FAILED.value());
             return null;
         }
+        //update-begin---author:scott ---date:20261013  for：【安全】图形验证码校验通过后立即作废（一次一用），防止同一验证码被反复用于尝试登录-----------
+        redisUtil.del(realKey);
+        //update-end---author:scott ---date:20261013  for：【安全】图形验证码校验通过后立即作废（一次一用），防止同一验证码被反复用于尝试登录-----------
         return realKey;
     }
 }

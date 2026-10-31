@@ -237,6 +237,32 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
 	}
 
 	/**
+	 * 获取系统字典版本号，Redis 中不存在时初始化
+	 * @author scott
+	 * @since 2026-10-13 【issues/9838】管理员修改字典后，其他用户刷新页面自动同步最新字典
+	 */
+	@Override
+	public String getDictVersion() {
+		Object version = redisUtil.get(CommonConstant.SYS_DICT_VERSION);
+		if (oConvertUtils.isEmpty(version)) {
+			// Redis 中不存在（首次或被清理）时初始化，前端会因版本不一致重新拉取一次字典
+			version = String.valueOf(System.currentTimeMillis());
+			redisUtil.set(CommonConstant.SYS_DICT_VERSION, version);
+		}
+		return version.toString();
+	}
+
+	/**
+	 * 刷新系统字典版本号（写入当前时间戳）
+	 * @author scott
+	 * @since 2026-10-13 【issues/9838】管理员修改字典后，其他用户刷新页面自动同步最新字典
+	 */
+	@Override
+	public void refreshDictVersion() {
+		redisUtil.set(CommonConstant.SYS_DICT_VERSION, String.valueOf(System.currentTimeMillis()));
+	}
+
+	/**
 	 * 通过查询指定code 获取字典值text
 	 * @param code
 	 * @param key
@@ -384,19 +410,17 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
 	public List<DictModel> queryTableDictTextByKeys(String table, String text, String code, List<String> codeValues, String dataSource) {
 		SensitiveTableCheckUtil.checkForbiddenFields(table, text, code);
 		String str = table+","+text+","+code;
-		//update-begin---author:chenrui ---date:20231221  for：[issues/#5643]解决分布式下表字典跨库无法查询问题------------
 		// 是否自定义数据源
 		boolean isCustomDataSource = oConvertUtils.isNotEmpty(dataSource);
-		// 如果是自定义数据源就不检查表字典白名单
-		if (!isCustomDataSource) {
-			// 【QQYUN-6533】表字典白名单check
-			sysBaseAPI.dictTableWhiteListCheckByDict(table, text, code);
-			// 1.表字典黑名单check
-			if (!dictQueryBlackListHandler.isPass(str)) {
-				log.error(dictQueryBlackListHandler.getError());
-				return null;
-			}
+		//update-begin---author:scott ---date:20261013  for：【安全 GHSA-8j27-4v3v-m7xf/GHSA-x8p6-4wjm-5gg2】表字典白名单/黑名单校验不再因传入自定义数据源(如ds=master)而跳过，防止绕过校验越权读取任意表任意列(含sys_user.password)-----------
+		// 【QQYUN-6533】表字典白名单check（无论是否自定义数据源都要校验表名/字段）
+		sysBaseAPI.dictTableWhiteListCheckByDict(table, text, code);
+		// 1.表字典黑名单check
+		if (!dictQueryBlackListHandler.isPass(str)) {
+			log.error(dictQueryBlackListHandler.getError());
+			return null;
 		}
+		//update-end---author:scott ---date:20261013  for：【安全 GHSA-8j27-4v3v-m7xf/GHSA-x8p6-4wjm-5gg2】表字典白名单/黑名单校验不再因传入自定义数据源而跳过-----------
 
 		// 2.分割SQL获取表名和条件
 		String filterSql = null;
@@ -771,9 +795,11 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
 		String table = SqlInjectionUtil.getSqlInjectTableName(query.getTable());
 		String text = SqlInjectionUtil.getSqlInjectTableName(query.getText());
 		String code = SqlInjectionUtil.getSqlInjectTableName(query.getCode());
-		query.setCode(table);
-		query.setTable(text);
-		query.setText(code);
+		//update-begin---author:scott ---date:20261022  for：【issues/9914】queryDictTablePageList 回填 table/text/code 时字段错位-----------
+		query.setTable(table);
+		query.setText(text);
+		query.setCode(code);
+		//update-end---author:scott ---date:20261022  for：【issues/9914】queryDictTablePageList 回填 table/text/code 时字段错位-----------
 		
 		String dictCode = table+","+text+","+code;
 		// 【QQYUN-6533】表字典白名单check
@@ -913,38 +939,22 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
 		}
 		String selectFields = String.join(", ", fieldSet);
 
-		// ---------- 3. 构造 WHERE 条件 ----------
-		List<String> conditionParts = new ArrayList<>();
+		// ---------- 3. 构造 WHERE 条件（参数绑定） ----------
+		//update-begin---author:scott ---date:20261027  for：【GHSA-jgwm-2xxm-mmm4】keyValues/keyword改为参数绑定，不再拼接SQL字符串（原写法只转义单引号，MySQL下可用反斜杠闭合引号注入）-----------
+		// 3.1 按 keyValues 精确查询（回显用），-1 保留空项，避免 keyValues="," 时列表为空导致不加条件查出全表
+		List<String> keyValueList = oConvertUtils.isNotEmpty(keyValues) ? Arrays.asList(keyValues.split(",", -1)) : null;
 
-		//update-begin---author:liusq ---date:2026-05-27  for：【优化】去掉无用参数searchFields、condition-----------
-		// 3.1 按 keyValues 精确查询（回显用）
-		if (oConvertUtils.isNotEmpty(keyValues)) {
-			keyValues = keyValues.replace("'", "''");
-			String inValues = "'" + String.join("','", keyValues.split(",")) + "'";
-			conditionParts.add(safeValueField + " IN (" + inValues + ")");
-		}
-		//update-end---author:liusq ---date:2026-05-27  for：【优化】去掉无用参数searchFields、condition-----------
-
-		// 3.2 关键词模糊搜索
+		// 3.2 关键词模糊搜索字段
+		List<String> likeFields = new ArrayList<>();
+		String likeKeyword = null;
 		if (oConvertUtils.isNotEmpty(keyword)) {
-			keyword = keyword.replace("'", "''");
-			String[] searchArr = showFields.split(",");
-			List<String> likeParts = new ArrayList<>();
-			for (String sf : searchArr) {
+			for (String sf : showFields.split(",")) {
 				sf = sf.trim();
 				if (oConvertUtils.isNotEmpty(sf)) {
-					String safeSf = SqlInjectionUtil.getSqlInjectField(sf);
-					likeParts.add(safeSf + " like '%" + keyword + "%'");
+					likeFields.add(SqlInjectionUtil.getSqlInjectField(sf));
 				}
 			}
-			if (!likeParts.isEmpty()) {
-				conditionParts.add("(" + String.join(" or ", likeParts) + ")");
-			}
-		}
-
-		String filterSql = conditionParts.isEmpty() ? "" : String.join(" and ", conditionParts);
-		if (oConvertUtils.isNotEmpty(filterSql)) {
-			SqlInjectionUtil.filterDictConditionSqlFromRequest(tableName, filterSql);
+			likeKeyword = likeFields.isEmpty() ? null : "%" + keyword + "%";
 		}
 
 		// ---------- 4. 分页查询 ----------
@@ -953,8 +963,10 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
 		Page<Map<String, Object>> page = new Page<>(current, size);
 		page.setSearchCount(false); // 手动 count，避免 MyBatis Plus 自动 count 与 ${} 语法冲突
 
-		IPage<Map<String, Object>> pageResult = baseMapper.queryPageTableWithFields(page, safeTable, selectFields, filterSql);
-		long total = baseMapper.countTableWithFields(safeTable, filterSql);
+		IPage<Map<String, Object>> pageResult = baseMapper.queryPageTableWithFields(page, safeTable, selectFields,
+				safeValueField, keyValueList, likeFields, likeKeyword);
+		long total = baseMapper.countTableWithFields(safeTable, safeValueField, keyValueList, likeFields, likeKeyword);
+		//update-end---author:scott ---date:20261027  for：【GHSA-jgwm-2xxm-mmm4】keyValues/keyword改为参数绑定，不再拼接SQL字符串（原写法只转义单引号，MySQL下可用反斜杠闭合引号注入）-----------
 
 		// ---------- 5. 组装返回值 ----------
 		Map<String, Object> result = new HashMap<>(4);

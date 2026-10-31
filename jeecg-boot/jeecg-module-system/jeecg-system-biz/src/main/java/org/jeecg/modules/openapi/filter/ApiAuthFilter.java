@@ -44,11 +44,23 @@ public class ApiAuthFilter implements Filter {
         HttpServletRequest request = (HttpServletRequest) servletRequest;
         HttpServletResponse response = (HttpServletResponse) servletResponse;
 
-        // OPTIONS 预检请求直接放行，由 CorsFilter 负责写入 CORS 响应头
+        //update-begin---author:jeecg---for：OPTIONS 预检只应答 CORS，不得进入后续业务链路，否则可绕过签名/AK/授权校验---
+        // OPTIONS 预检请求：仅回写 CORS 响应头并结束，绝不放行到 filterChain（防止 OPTIONS 绕过 OpenApi 签名鉴权）
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
-            filterChain.doFilter(servletRequest, servletResponse);
+            String origin = request.getHeader("Origin");
+            if (StringUtils.hasText(origin)) {
+                response.setHeader("Access-Control-Allow-Origin", origin);
+                response.setHeader("Access-Control-Allow-Credentials", "true");
+                response.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,OPTIONS");
+                String reqHeaders = request.getHeader("Access-Control-Request-Headers");
+                if (StringUtils.hasText(reqHeaders)) {
+                    response.setHeader("Access-Control-Allow-Headers", reqHeaders);
+                }
+            }
+            response.setStatus(HttpServletResponse.SC_OK);
             return;
         }
+        //update-end---author:jeecg---for：OPTIONS 预检只应答 CORS，不得进入后续业务链路---
 
         String ip = IpUtils.getIpAddr(request);
 
@@ -340,6 +352,12 @@ public class ApiAuthFilter implements Filter {
         if(openApiAuth==null){
             throw new JeecgBootException("不存在认证信息");
         }
+
+        //update-begin---author:scott ---date:20261014  for：SK为空时签名退化为md5(appKey+timestamp)，知道AK即可伪造，空SK一律拒绝-----------
+        if (!StringUtils.hasText(openApiAuth.getSk())) {
+            throw new JeecgBootException("该凭据未配置SK，请在【OpenAPI-授权管理】重新生成AK/SK");
+        }
+        //update-end---author:scott ---date:20261014  for：SK为空时签名退化为md5(appKey+timestamp)，知道AK即可伪造，空SK一律拒绝-----------
 
         if(!appKey.equals(openApiAuth.getAk())){
             throw new JeecgBootException("appkey错误");
