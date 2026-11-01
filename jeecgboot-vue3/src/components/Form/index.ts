@@ -19,7 +19,6 @@ export const JSelectUserByDeptPost = defineAsyncComponent(() => import('./src/je
 export const JCodeEditor = defineAsyncComponent(() => import('./src/jeecg/components/JCodeEditor.vue'));
 export const JCategorySelect = defineAsyncComponent(() => import('./src/jeecg/components/JCategorySelect.vue'));
 export const JSelectMultiple = defineAsyncComponent(() => import('./src/jeecg/components/JSelectMultiple.vue'));
-export const JPopup = defineAsyncComponent(() => import('./src/jeecg/components/JPopup.vue'));
 export const JAreaSelect = defineAsyncComponent(() => import('./src/jeecg/components/JAreaSelect.vue'));
 export const JEasyCron = defineAsyncComponent(() => import('./src/jeecg/components/JEasyCron/EasyCronInput.vue'));
 export const JEasyCronInner = defineAsyncComponent(() => import('./src/jeecg/components/JEasyCron/EasyCronInner.vue'));
@@ -32,9 +31,9 @@ export const JTreeSelect = defineAsyncComponent(() => import('./src/jeecg/compon
 export const JSearchSelect = defineAsyncComponent(() => import('./src/jeecg/components/JSearchSelect.vue'));
 export const JSelectUserByDept = defineAsyncComponent(() => import('./src/jeecg/components/JSelectUserByDept.vue'));
 export const JSelectUserByDepartment = defineAsyncComponent(() => import('./src/jeecg/components/JSelectUserByDepartment.vue'));
-// update-begin--author:liaozhiyang---date:20260227---for:【QQYUN-14751】tinymce富文本、JEasyCron、JLinkTableCard异步加载
+// update-begin--author:liaozhiyang---date:20260227---for:【QQYUN-14751】tinymce富文本、JEasyCron异步加载
 export const JEditor = defineAsyncComponent(() => import('./src/jeecg/components/JEditor.vue'));
-// update-end--author:liaozhiyang---date:20260227---for:【QQYUN-14751】tinymce富文本、JEasyCron、JLinkTableCard异步加载
+// update-end--author:liaozhiyang---date:20260227---for:【QQYUN-14751】tinymce富文本、JEasyCron异步加载
 export const JImageUpload = defineAsyncComponent(() => import('./src/jeecg/components/JImageUpload.vue'));
 // Jeecg自定义校验
 // update-begin--author:liaozhiyang---date:20260303---for:【QQYUN-14815】JCronValidator从Form中注释，防止首页加载，改为业务中直接导入

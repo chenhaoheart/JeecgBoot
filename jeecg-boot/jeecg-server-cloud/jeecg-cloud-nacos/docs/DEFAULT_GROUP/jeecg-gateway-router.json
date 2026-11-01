@@ -5,11 +5,8 @@
     "name": "Path",
     "args": {
       "_genkey_0": "/sys/**",
-      "_genkey_1": "/jmreport/**",
-      "_genkey_3": "/online/**",
       "_genkey_4": "/generic/**",
       "_genkey_5": "/oauth2/**",
-      "_genkey_6": "/drag/**",
       "_genkey_7": "/actuator/**"
     }
   }],

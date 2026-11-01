@@ -43,14 +43,6 @@ public interface SysDictMapper extends BaseMapper<SysDict> {
 	@Deprecated
 	public Long duplicateCheckCountSqlNoDataId(DuplicateCheckVo duplicateCheckVo);
 
-	/**
-	 * 【QQYUN-15337 多数据源】按表名查 online 表单(onl_cgform_head)上配置的 db_source，
-	 * 仅返回 db_source 非空的记录；找不到 / 该表不是online表 / 未配数据源 时返回空列表。
-	 * 失败由调用方 try/catch（如果运行环境没装 online 模块、onl_cgform_head 不存在）。
-	 */
-	@Select("SELECT db_source FROM onl_cgform_head WHERE table_name = #{tableName} AND db_source IS NOT NULL AND db_source != ''")
-	public List<String> findOnlineFormDbSourceByTableName(@Param("tableName") String tableName);
-
     /**
      * 通过字典code获取字典数据
      * @param code 字典code

@@ -57,7 +57,7 @@
   import { removeAuthCache, setAuthCache } from '/src/utils/auth';
   import { getFileAccessHttpUrl } from '/@/utils/common/compUtils';
   import { getRefPromise } from '/@/utils/index';
-  import { refreshDragCache, refreshHomeCache } from "@/api/common/api";
+  import { refreshHomeCache } from "@/api/common/api";
 
   type MenuEvent = 'logout' | 'doc' | 'lock' | 'cache' | 'depart' | 'defaultHomePage' | 'password' | 'account';
   const { createMessage } = useMessage();
@@ -122,8 +122,6 @@
       // 清除缓存
       async function clearCache() {
         const result = await refreshCache();
-        const dragRes = await refreshDragCache();
-        console.log('dragRes', dragRes);
         await refreshHomeCache();
         await userStore.getUserInfoAction();
         if (result.success) {

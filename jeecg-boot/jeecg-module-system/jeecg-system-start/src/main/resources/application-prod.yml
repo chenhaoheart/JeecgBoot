@@ -177,13 +177,8 @@ mybatis-plus:
     call-setters-on-nulls: true
 #jeecg专用配置
 jeecg:
-  # AI集成
+  # AI集成辅助配置（skills/限流）。AI模型配置已统一迁移至数据库 airag_model 表（AI模型管理界面维护）
   ai-chat:
-    enabled: true
-    model: deepseek-v4-pro
-    apiKey: ??
-    apiHost: https://api.deepseek.com
-    timeout: 60
     skills-dir:
     skills-shell-dir:
     # AI聊天助手访问限流配置
@@ -194,50 +189,6 @@ jeecg:
       send-per-ip-per-minute: 20
       # 单 session 每小时上限
       upload-per-session-per-hour: 20
-    # AI文生图绘画
-    ai-model-draw:
-      # 提供商 OPENAI/ZHIPU/QWEN
-      provider: QWEN
-      model: wan2.2-t2i-flash
-      apiKey: sk-??
-      apiHost: https://dashscope.aliyuncs.com/api/v1/
-      timeout: 60
-    # AI图生图绘画
-    ai-model-pic-draw:
-      # 提供商 QWEN
-      provider: QWEN
-      # 目前只支持 wan2.5-i2i-preview和wanx2.1-imageedit模型
-      model: wan2.5-i2i-preview
-      apiKey: sk-??
-      apiHost: https://dashscope.aliyuncs.com/api/v1/
-      timeout: 60
-    # AI语音
-    ai-model-voice:
-      provider: ZHIPU
-      model: glm-tts
-      apiKey: ??
-      apiHost: https://open.bigmodel.cn/api/paas/v4
-      timeout: 60
-      # tongtong、chuichui、xiaochen、jam、kazi、douji、luodo
-      voice: tongtong
-      speed: 1.0
-      volume: 0.0
-    # AI视频
-    ai-model-video:
-      provider: ZHIPU
-      model: ??
-      apiKey: sk-??
-      apiHost: https://api.deepseek.com/v1
-      timeout: 60
-      ffmpeg-path:
-      edge-tts-path:
-    # 默认向量模型
-    ai-model-embed:
-      provider: QWEN
-      model: text-embedding-v1
-      apiKey: sk-??
-      apiHost: https://dashscope.aliyuncs.com/api/v1/services/
-      timeout: 60
   # AIRag向量库
   ai-rag:
     # AI流程敏感节点(stdio=命令行节点, sql=SQL节点, code=代码节点/脚本执行,高危存在RCE风险默认禁用)

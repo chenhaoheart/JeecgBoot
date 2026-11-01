@@ -211,7 +211,7 @@ export default async ({ command, mode }: ConfigEnv): Promise<UserConfig> => {
         'leaflet',
       ],
       exclude: [
-        //升级vite4后，需要排除online和aiflow依赖
+        //升级vite4后，需要排除aiflow依赖
         '@jeecg/aiflow',
       ],
     },

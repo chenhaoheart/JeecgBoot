@@ -31,7 +31,7 @@ import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.common.util.filter.SsrfFileTypeFilter;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import org.jeecg.config.AiChatConfig;
+import org.jeecg.modules.airag.llm.service.impl.AiragDefaultModelService;
 import org.jeecg.common.system.util.JwtUtil;
 import org.jeecg.common.util.*;
 import org.jeecg.modules.airag.common.handler.IEmbeddingHandler;
@@ -95,8 +95,8 @@ public class EmbeddingHandler implements IEmbeddingHandler {
     @Autowired
     KnowConfigBean knowConfigBean;
 
-    @Autowired(required = false)
-    private AiChatConfig aiChatConfig;
+    @Autowired
+    private AiragDefaultModelService airagDefaultModelService;
 
     /**
      * 默认分段长度
@@ -642,32 +642,15 @@ public class EmbeddingHandler implements IEmbeddingHandler {
                 log.warn("向量模型[{}]未激活，尝试使用 yml 中配置的默认向量模型", modelId);
             }
         }
-        // 回退到 yml 默认向量模型
-        if (aiChatConfig != null && oConvertUtils.isNotEmpty(aiChatConfig.getAiModelEmbed().getApiKey())) {
-            log.info("使用 yml 中配置的默认向量模型: {}", aiChatConfig.getAiModelEmbed().getModel());
-            return buildDefaultEmbedModel(aiChatConfig.getAiModelEmbed());
+        // 回退到数据库默认向量模型
+        AiragModel defaultEmbed = airagDefaultModelService.getDefaultByType(LLMConsts.MODEL_TYPE_EMBED);
+        if (defaultEmbed != null) {
+            log.info("使用系统默认向量模型: {}", defaultEmbed.getModelName());
+            return defaultEmbed;
         }
-        AssertUtils.assertNotEmpty("向量模型不能为空，请先配置向量模型或在 yml 中设置默认向量模型(jeecg.ai-chat.ai-model-embed)", modelId);
+        AssertUtils.assertNotEmpty("向量模型不能为空，请先在 AI模型管理 中配置向量模型并设为默认", modelId);
         return null;
         //update-end---author:wangshuai---date:2026-03-09---for:【QQYUN-14645】添加默认向量模型---
-    }
-
-    /**
-     * 根据 yml 配置构建默认向量模型对象
-     *
-     * @param embedConfig yml 中的向量模型配置
-     * @return AiragModel
-     */
-    private AiragModel buildDefaultEmbedModel(AiChatConfig.ModelConfig embedConfig) {
-        AiragModel model = new AiragModel();
-        model.setModelName(embedConfig.getModel());
-        model.setBaseUrl(embedConfig.getApiHost());
-        model.setProvider(embedConfig.getProvider());
-        model.setModelType(LLMConsts.MODEL_TYPE_EMBED);
-        JSONObject credential = new JSONObject();
-        credential.put("apiKey", embedConfig.getApiKey());
-        model.setCredential(credential.toJSONString());
-        return model;
     }
 
     /**

@@ -75,12 +75,12 @@
       </a-row>
 
       <a-row :gutter="[12, 12]" class="section">
-        <a-col :xs="24" :lg="10">
+        <a-col :xs="24" :lg="8">
           <a-card title="知识库" :bordered="false" :loading="loading">
             <a-table :columns="kbColumns" :data-source="bases" :pagination="false" size="small" row-key="name" />
           </a-card>
         </a-col>
-        <a-col :xs="24" :lg="14">
+        <a-col :xs="24" :lg="16">
           <a-card title="快捷入口" :bordered="false">
             <div class="entries">
               <button v-for="item in entries" :key="item.title" type="button" class="entry" @click="go(item.path)">

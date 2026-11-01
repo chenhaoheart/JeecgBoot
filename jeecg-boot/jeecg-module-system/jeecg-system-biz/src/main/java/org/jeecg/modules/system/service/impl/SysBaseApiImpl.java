@@ -23,11 +23,9 @@ import org.apache.commons.lang3.ObjectUtils;
 import org.apache.shiro.SecurityUtils;
 import org.jeecg.common.api.dto.AiragFlowDTO;
 import org.jeecg.common.api.dto.DataLogDTO;
-import org.jeecg.common.api.dto.OnlineAuthDTO;
 import org.jeecg.common.api.dto.PushMessageDTO;
 import org.jeecg.common.api.dto.message.*;
 import org.jeecg.common.api.vo.Result;
-import org.jeecg.common.aspect.UrlMatchEnum;
 import org.jeecg.common.constant.*;
 import org.jeecg.common.constant.enums.*;
 import org.jeecg.common.desensitization.util.SensitiveInfoUtil;
@@ -232,29 +230,9 @@ public class SysBaseApiImpl implements ISysBaseAPI {
 			query.eq(SysPermission::getMenuType,2);
 			query.eq(SysPermission::getDelFlag,0);
 			
-			// 代码逻辑说明: 解决参数顺序问题
-			List<String> allPossiblePaths = this.getOnlinePossiblePaths(requestPath);
-			log.debug("获取的菜单地址= {}", allPossiblePaths.toString());
-			if(allPossiblePaths.size()==1){
-				query.eq(SysPermission::getUrl, requestPath);
-			}else{
-				query.in(SysPermission::getUrl, allPossiblePaths);	
-			}
-			
+			query.eq(SysPermission::getUrl, requestPath);
+
 			currentSyspermission = sysPermissionMapper.selectList(query);
-			//2.未找到 再通过自定义匹配URL 获取菜单
-			if(currentSyspermission==null || currentSyspermission.size()==0) {
-				//通过自定义URL匹配规则 获取菜单（实现通过菜单配置数据权限规则，实际上针对获取数据接口进行数据规则控制）
-				String userMatchUrl = UrlMatchEnum.getMatchResultByUrl(requestPath);
-				LambdaQueryWrapper<SysPermission> queryQserMatch = new LambdaQueryWrapper<SysPermission>();
-				// 代码逻辑说明:  online菜单如果配置成一级菜单 权限查询不到 取消menuType = 1
-				//queryQserMatch.eq(SysPermission::getMenuType, 1);
-				queryQserMatch.eq(SysPermission::getDelFlag, 0);
-				queryQserMatch.eq(SysPermission::getUrl, userMatchUrl);
-				if(oConvertUtils.isNotEmpty(userMatchUrl)){
-					currentSyspermission = sysPermissionMapper.selectList(queryQserMatch);
-				}
-			}
 			//3.未找到 再通过正则匹配获取菜单
 			if(currentSyspermission==null || currentSyspermission.size()==0) {
 				//通过正则匹配权限配置
@@ -1271,62 +1249,6 @@ public class SysBaseApiImpl implements ISysBaseAPI {
 	}
 
 	/**
-	 * 判断online菜单是否有权限
-	 * @param onlineAuthDTO
-	 * @return
-	 */
-	@Override
-	public boolean hasOnlineAuth(OnlineAuthDTO onlineAuthDTO) {
-		String username = onlineAuthDTO.getUsername();
-		List<String> possibleUrl = onlineAuthDTO.getPossibleUrl();
-		String onlineFormUrl = onlineAuthDTO.getOnlineFormUrl();
-		//查询菜单
-		LambdaQueryWrapper<SysPermission> query = new LambdaQueryWrapper<SysPermission>();
-		query.eq(SysPermission::getDelFlag, 0);
-		query.in(SysPermission::getUrl, possibleUrl);
-		List<SysPermission> permissionList = sysPermissionMapper.selectList(query);
-		if (permissionList == null || permissionList.size() == 0) {
-			//没有配置菜单 找online表单菜单地址
-			SysPermission sysPermission = new SysPermission();
-			sysPermission.setUrl(onlineFormUrl);
-			int count = sysPermissionMapper.queryCountByUsername(username, sysPermission);
-			if(count<=0){
-				// 代码逻辑说明: [QQYUN-7992]【online】工单申请下的online表单，未配置online表单开发菜单，操作报错无权限------------
-				sysPermission.setUrl(onlineAuthDTO.getOnlineWorkOrderUrl());
-				count = sysPermissionMapper.queryCountByUsername(username, sysPermission);
-				if(count<=0) {
-					return false;
-				}
-			}
-		} else {
-			//找到菜单了
-			boolean has = false;
-			for (SysPermission p : permissionList) {
-				int count = sysPermissionMapper.queryCountByUsername(username, p);
-				has = has || (count>0);
-			}
-			if (!has) {
-				//没有配置菜单 找online表单菜单地址
-				SysPermission sysPermission = new SysPermission();
-				sysPermission.setUrl(onlineFormUrl);
-				int count = sysPermissionMapper.queryCountByUsername(username, sysPermission);
-				if (count <= 0) {
-					// 代码逻辑说明: [QQYUN-7992]【online】工单申请下的online表单，未配置online表单开发菜单，操作报错无权限------------
-					sysPermission.setUrl(onlineAuthDTO.getOnlineWorkOrderUrl());
-					count = sysPermissionMapper.queryCountByUsername(username, sysPermission);
-					if (count > 0) {
-						has = true;
-					}
-				} else {
-					has = true;
-				}
-			}
-			return has;
-		}
-		return true;
-	}
-
-	/**
 	 * 查询用户拥有的角色集合 common api 里面的接口实现
 	 * @param username
 	 * @return
@@ -1989,75 +1911,6 @@ public class SysBaseApiImpl implements ISysBaseAPI {
 		return sysUserPositionService.listObjs(queryWrapper,e->e.toString());
 	}
 	
-	/**
-	 * 获取带参数的报表地址，因为多个参数可能顺序会变，所以要将参数顺序重排，获取所有可能的地址集合
-	 * 如下：参数顺序调整使用in查询，就能查询出菜单数据
-	 *  /online/cgreport/1624393012494286850?name=1&age=16
-	 *  /online/cgreport/1624393012494286850?age=16&name=1
-	 * @param path
-	 * @return
-	 */
-	private List<String> getOnlinePossiblePaths(String path){
-		List<String> result = new ArrayList<>();
-		log.debug(" path = "+ path);
-		if (path.indexOf("?") >= 0 && (path.contains("/online/cgreport/") || path.contains("/online/cgformList/") || path.contains("/online/graphreport/"))) {
-			//包含?说明有多个参数
-			String[] pathArray = path.split("\\?");
-			if(oConvertUtils.isNotEmpty(pathArray[1])){
-				String[] params = pathArray[1].split("&");
-				if(params.length==1){
-					result.add(path);
-				}else{
-					result = anm(pathArray[0], Arrays.asList(params));
-				}
-			}else{
-				result.add(path);
-			}
-		}else{
-			result.add(path);
-		}
-		return result;
-	}
-
-
-	/**
-	 * 获取数组元素的 不同排列 a(n,m)
-	 * @param list
-	 * @return
-	 */
-	private List<String> anm(String baseUrl, List<String> list) {
-		int len = list.size();
-		int[] destArray = new int[len];
-		for (int i = 0; i < len; i++) {
-			destArray[i] = i;
-		}
-		int[] temp = new int[len];
-		List<String> result = new ArrayList<>();
-		while (temp[0] < len) {
-			temp[temp.length - 1]++;
-			for (int i = temp.length - 1; i > 0; i--) {
-				if (temp[i] == len) {
-					temp[i] = 0;
-					temp[i - 1]++;
-				}
-			}
-			int[] tt = temp.clone();
-			Arrays.sort(tt);
-			if (!Arrays.equals(tt, destArray)) {
-				continue;
-			}
-			String str = "";
-			for (int i = 0; i < len; i++) {
-				if(i>0){
-					str += "&";
-				}
-				str += list.get(temp[i]);
-			}
-			result.add(baseUrl+"?"+str);
-		}
-		return result;
-	}
-
 	@Override
 	public List<String> getUserAccountsByDepCode(String orgCode) {
 		return userMapper.getUserAccountsByDepCode(orgCode);

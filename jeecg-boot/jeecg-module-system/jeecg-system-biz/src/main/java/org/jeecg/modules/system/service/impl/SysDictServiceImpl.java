@@ -74,10 +74,6 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
 	@Autowired
 	private RedisUtil redisUtil;
 
-	@Lazy
-	@Autowired
-	private org.jeecg.modules.system.service.ISysDataSourceService sysDataSourceService;
-
 	@Override
 	public boolean duplicateCheckData(DuplicateCheckVo duplicateCheckVo) {
 		Long count = null;
@@ -104,28 +100,13 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
 			if(DbTypeUtils.dbTypeIsPostgre(CommonUtils.getDatabaseTypeEnum())){
 				duplicateCheckVo.setFieldName("CAST("+duplicateCheckVo.getFieldName()+" as text)");
 			}
-			//update-begin---author:jeecg ---date:20260513  for：【QQYUN-15337】online表单多数据源：如果该表属于配置了 db_source 的 online 表单，则把唯一性校验 count 查询切到该数据源执行，避免在主库上找不到表-----------
-			String onlineDbSource = resolveOnlineFormDbSource(table);
-			boolean dbSourcePushed = false;
-			if (StringUtils.isNotBlank(onlineDbSource)) {
-				sysDataSourceService.ensureRegistered(onlineDbSource);
-				DynamicDataSourceContextHolder.push(onlineDbSource);
-				dbSourcePushed = true;
+			if (StringUtils.isNotBlank(duplicateCheckVo.getDataId())) {
+				// [1].编辑页面校验
+				count = sysDictMapper.duplicateCheckCountSql(duplicateCheckVo);
+			} else {
+				// [2].添加页面校验
+				count = sysDictMapper.duplicateCheckCountSqlNoDataId(duplicateCheckVo);
 			}
-			try {
-				if (StringUtils.isNotBlank(duplicateCheckVo.getDataId())) {
-					// [1].编辑页面校验
-					count = sysDictMapper.duplicateCheckCountSql(duplicateCheckVo);
-				} else {
-					// [2].添加页面校验
-					count = sysDictMapper.duplicateCheckCountSqlNoDataId(duplicateCheckVo);
-				}
-			} finally {
-				if (dbSourcePushed) {
-					DynamicDataSourceContextHolder.poll();
-				}
-			}
-			//update-end---author:jeecg ---date:20260513  for：【QQYUN-15337】online表单多数据源：如果该表属于配置了 db_source 的 online 表单，则把唯一性校验 count 查询切到该数据源执行-----------
 		}catch(MyBatisSystemException e){
 			log.error(e.getMessage(), e);
 			String errorCause = "查询异常,请检查唯一校验的配置！";
@@ -143,29 +124,6 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
 		}
 	}
 
-	//update-begin---author:jeecg ---date:20260513  for：【QQYUN-15337】online表单多数据源：按表名查 onl_cgform_head 上该表所属表单配置的 db_source-----------
-	/**
-	 * 查询指定物理表是否属于一个配置了 db_source 的 online 表单，是则返回该数据源编码；否则返回 null。
-	 * 注意：附表 / 复制表/视图 的 db_source 是否会被填上，取决于主表/原始表是否被重新保存触发过传播（{@code OnlCgformHeadServiceImpl.propagateDbSourceToSubTables}）；
-	 * 边界场景查不到时落回主库，与原逻辑一致。
-	 * 异常一律吞掉返回 null（如运行环境不含 online 模块、{@code onl_cgform_head} 表不存在）。
-	 */
-	private String resolveOnlineFormDbSource(String tableName) {
-		if (StringUtils.isBlank(tableName)) {
-			return null;
-		}
-		try {
-			List<String> list = sysDictMapper.findOnlineFormDbSourceByTableName(tableName);
-			if (list == null || list.isEmpty()) {
-				return null;
-			}
-			return list.get(0);
-		} catch (Exception e) {
-			log.debug("resolveOnlineFormDbSource 查询失败 [{}]: {}", tableName, e.getMessage());
-			return null;
-		}
-	}
-	//update-end---author:jeecg ---date:20260513  for：【QQYUN-15337】online表单多数据源：按表名查 onl_cgform_head 上该表所属表单配置的 db_source-----------
 
 
 	/**

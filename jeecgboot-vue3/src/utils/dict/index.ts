@@ -22,21 +22,6 @@ export const getDictItemsByCode = (code) => {
 
 };
 /**
- * 从缓存中获取Pop字典配置
- * @param text
- * @param code
- */
-export const getPopDictByCode = (text, codeStr) => {
-  const [code, dictCode, dictText] = codeStr.split(',');
-  if (!code || !dictCode || !dictText) {
-    return [];
-  }
-  return defHttp.get(
-    { url: `/online/api/cgreportGetDataPackage`, params: { code, dictText, dictCode, dataList: text } },
-    { isTransformResponse: false }
-  );
-};
-/**
  * 获取字典数组
  * @param dictCode 字典Code
  * @return List<Map>

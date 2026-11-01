@@ -9,7 +9,9 @@ import org.apache.shiro.SecurityUtils;
 import org.jeecg.common.system.vo.LoginUser;
 import org.jeecg.common.util.RedisUtil;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.jeecg.config.AiChatConfig;
+import org.jeecg.modules.airag.llm.entity.AiragModel;
+import org.jeecg.modules.airag.llm.consts.LLMConsts;
+import org.jeecg.modules.airag.llm.service.impl.AiragDefaultModelService;
 import org.jeecg.modules.airag.voice.util.VoiceApiHelper;
 import org.jeecg.modules.airag.video.service.IVideoGenerationService;
 import org.jeecg.modules.airag.video.vo.VideoGenerateVo;
@@ -67,7 +69,7 @@ public class VideoGenerationServiceImpl implements IVideoGenerationService {
     }
 
     @Autowired
-    private AiChatConfig aiChatConfig;
+    private AiragDefaultModelService airagDefaultModelService;
 
     @Autowired
     private JeecgBaseConfig jeecgBaseConfig;
@@ -81,9 +83,9 @@ public class VideoGenerationServiceImpl implements IVideoGenerationService {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
-    /** 实际使用的ffmpeg路径，优先yml配置，其次自动查找 */
+    /** 实际使用的ffmpeg路径，优先数据库配置，其次自动查找 */
     private String ffmpegPath;
-    /** 实际使用的edge-tts路径，优先yml配置，其次自动查找 */
+    /** 实际使用的edge-tts路径，优先数据库配置，其次自动查找 */
     private String edgeTtsPath;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -92,10 +94,19 @@ public class VideoGenerationServiceImpl implements IVideoGenerationService {
 
     @PostConstruct
     public void init() {
-        // 从yml配置读取，若为空则自动查找
-        AiChatConfig.VideoModelConfig videoConfig = aiChatConfig.getAiModelVideo();
-        String configFfmpeg = videoConfig.getFfmpegPath();
-        String configEdgeTts = videoConfig.getEdgeTtsPath();
+        // 从数据库默认视频模型的 model_params 读取，若为空则自动查找
+        String configFfmpeg = null;
+        String configEdgeTts = null;
+        try {
+            AiragModel videoModel = airagDefaultModelService.getDefaultByType(LLMConsts.MODEL_TYPE_VIDEO);
+            if (videoModel != null) {
+                JSONObject videoParams = AiragDefaultModelService.extractParams(videoModel);
+                configFfmpeg = videoParams.getString("ffmpegPath");
+                configEdgeTts = videoParams.getString("edgeTtsPath");
+            }
+        } catch (Exception e) {
+            log.warn("读取默认视频模型配置失败，ffmpeg/edge-tts 将自动查找: {}", e.getMessage());
+        }
 
         if (configFfmpeg != null && !configFfmpeg.isBlank()) {
             this.ffmpegPath = configFfmpeg;
@@ -130,10 +141,10 @@ public class VideoGenerationServiceImpl implements IVideoGenerationService {
 
     @Override
     public VideoTaskResultVo submitTask(VideoGenerateVo vo) {
-        AiChatConfig.ModelConfig config = aiChatConfig.getAiModelVideo();
-        String apiKey = config.getApiKey();
-        String model = config.getModel();
-        String baseUrl = getVideoApiBaseUrl(config);
+        AiragModel videoModel = airagDefaultModelService.getRequiredDefaultByType(LLMConsts.MODEL_TYPE_VIDEO, "视频");
+        String apiKey = AiragDefaultModelService.extractApiKey(videoModel);
+        String model = videoModel.getModelName();
+        String baseUrl = getVideoApiBaseUrl(videoModel);
 
         JSONObject body = new JSONObject();
         body.put("model", model);
@@ -215,9 +226,9 @@ public class VideoGenerationServiceImpl implements IVideoGenerationService {
 
     @Override
     public VideoTaskResultVo queryTask(String taskId) {
-        AiChatConfig.ModelConfig config = aiChatConfig.getAiModelVideo();
-        String apiKey = config.getApiKey();
-        String baseUrl = getVideoApiBaseUrl(config);
+        AiragModel videoModel = airagDefaultModelService.getRequiredDefaultByType(LLMConsts.MODEL_TYPE_VIDEO, "视频");
+        String apiKey = AiragDefaultModelService.extractApiKey(videoModel);
+        String baseUrl = getVideoApiBaseUrl(videoModel);
 
         try {
             HttpRequest request = HttpRequest.newBuilder()
@@ -487,10 +498,10 @@ public class VideoGenerationServiceImpl implements IVideoGenerationService {
 	/**
 	 * 获取视频模型 API 基础地址并校验配置。
 	 */
-	private String getVideoApiBaseUrl(AiChatConfig.ModelConfig config) {
-		String apiHost = config.getApiHost();
+	private String getVideoApiBaseUrl(AiragModel videoModel) {
+		String apiHost = videoModel.getBaseUrl();
 		if (apiHost == null || apiHost.isBlank()) {
-			throw new IllegalStateException("视频模型 api-host 未配置，请检查 jeecg.ai-chat.ai-model-video.api-host");
+			throw new IllegalStateException("视频模型 base_url 未配置，请前往 AI模型管理 中设置默认视频模型的接口地址");
 		}
 		return apiHost.endsWith("/") ? apiHost.substring(0, apiHost.length() - 1) : apiHost;
 	}
@@ -499,9 +510,9 @@ public class VideoGenerationServiceImpl implements IVideoGenerationService {
      * 调用智谱GLM生成旁白文案
      */
     private String generateNarration(String videoPrompt) throws IOException, InterruptedException {
-        AiChatConfig.ModelConfig config = aiChatConfig.getAiModelVideo();
-        String apiKey = config.getApiKey();
-        String baseUrl = getVideoApiBaseUrl(config);
+        AiragModel videoModel = airagDefaultModelService.getRequiredDefaultByType(LLMConsts.MODEL_TYPE_VIDEO, "视频");
+        String apiKey = AiragDefaultModelService.extractApiKey(videoModel);
+        String baseUrl = getVideoApiBaseUrl(videoModel);
 
         JSONObject body = new JSONObject();
         body.put("model", "glm-4-flash");

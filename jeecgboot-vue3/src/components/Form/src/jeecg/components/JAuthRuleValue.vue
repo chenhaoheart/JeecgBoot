@@ -27,14 +27,6 @@
       <!-- 字典选择 -->
       <JDictSelectTag v-else-if="innerComponent === 'JDictSelectTag'" v-bind="innerProps" :value="inputVal" @change="handleCustomChange" />
 
-      <!-- 关联记录 -->
-      <div v-else-if="innerComponent === 'JLinkTableCard'" class="link-table-rule-value">
-        <JLinkTableCard v-bind="innerProps" :value="inputVal" @change="handleCustomChange" />
-      </div>
-
-      <!-- Popup 字典 -->
-      <JPopupDict v-else-if="innerComponent === 'JPopupDict'" v-bind="innerProps" :value="inputVal" @change="handleCustomChange" />
-
       <!-- 用户选择 -->
       <JSelectUser v-else-if="innerComponent === 'JSelectUser'" v-bind="innerProps" :value="inputVal" @change="handleCustomChange" />
 
@@ -64,8 +56,6 @@
   import { propTypes } from '/@/utils/propTypes';
   import { DownOutlined } from '@ant-design/icons-vue';
   import JDictSelectTag from './JDictSelectTag.vue';
-  import JLinkTableCard from './JLinkTableCard/JLinkTableCard.vue';
-  import JPopupDict from './JPopupDict.vue';
   import JSelectUser from './JSelectUser.vue';
   import JSelectDept from './JSelectDept.vue';
   import JAreaLinkage from './JAreaLinkage.vue';
@@ -208,23 +198,9 @@
     .ant-input-group > .JselectUser,
     .ant-input-group > .JSelectDept,
     .ant-input-group > .JAreaLinkage,
-    .ant-input-group > :deep(.JPopupDict),
-    .ant-input-group > .link-table-rule-value,
     .ant-input-group > .ant-picker {
       flex: 1;
       min-width: 0;
-    }
-    :deep(.JPopupDict > .ant-select),
-    :deep(.JPopupDict > .ant-input) {
-      width: 100%;
-    }
-    :deep(.JPopupDict > .ant-select .ant-select-selector),
-    :deep(.JPopupDict > .ant-input) {
-      border-top-left-radius: 0;
-      border-bottom-left-radius: 0;
-    }
-    .link-table-rule-value {
-      padding-left: 8px;
     }
   }
 </style>

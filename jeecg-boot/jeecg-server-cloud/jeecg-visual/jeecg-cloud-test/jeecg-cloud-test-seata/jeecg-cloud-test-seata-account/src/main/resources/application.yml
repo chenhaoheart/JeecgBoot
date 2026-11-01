@@ -39,6 +39,3 @@ seata:
   # seata 事务组编号 用于TC集群名
   tx-service-group: springboot-seata-group
   
-# 无用配置，为了避免扫码全代码导致启动慢
-minidao:
-  base-package: org.jeecg.modules.jmreport.*,org.jeecg.modules.chat2bi.*

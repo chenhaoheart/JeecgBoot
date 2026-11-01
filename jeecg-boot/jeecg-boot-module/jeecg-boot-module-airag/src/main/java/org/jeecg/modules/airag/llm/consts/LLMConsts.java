@@ -43,6 +43,16 @@ public class LLMConsts {
      */
     public static final String MODEL_TYPE_IMAGE = "IMAGE";
 
+    /**
+     * 模型类型: 语音合成
+     */
+    public static final String MODEL_TYPE_VOICE = "VOICE";
+
+    /**
+     * 模型类型: 视频生成
+     */
+    public static final String MODEL_TYPE_VIDEO = "VIDEO";
+
 	/**
 	 * OpenAI兼容协议供应商
 	 */
@@ -193,7 +203,9 @@ public class LLMConsts {
             "k3",
             // 智谱 GLM-4.7 请求中 temperature 不为 1 直接 400 拒绝：
             // {"code":"InvalidParameter","message":"`temperature` only 1 is allowed for this model"}
-            "glm-4.7"
+            "glm-4.7",
+            // 火山方舟 ark-code-latest（GLM 推理模型）同样只接受 temperature=1 / top_p=0.95
+            "ark-code-latest"
     ));
 
     /**

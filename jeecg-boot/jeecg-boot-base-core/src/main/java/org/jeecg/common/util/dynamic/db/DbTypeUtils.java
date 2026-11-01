@@ -28,8 +28,6 @@ public class DbTypeUtils {
         dialectMap.put("h2", "org.hibernate.dialect.HSQLDialect");
         // HSQL数据库  1
         dialectMap.put("hsql", "org.hibernate.dialect.HSQLDialect");
-        //SQLite数据库 应用平台mobile
-        dialectMap.put("sqlite", "org.jeecg.modules.online.config.dialect.SQLiteDialect");
         //PostgreSQL数据库1  --
         dialectMap.put("postgresql", "org.hibernate.dialect.PostgreSQLDialect");
         dialectMap.put("sqlserver2005", "org.hibernate.dialect.SQLServer2005Dialect");

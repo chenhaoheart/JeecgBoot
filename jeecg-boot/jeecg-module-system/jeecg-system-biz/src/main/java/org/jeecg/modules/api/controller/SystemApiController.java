@@ -4,7 +4,6 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.jeecg.common.api.dto.AiragFlowDTO;
 import org.jeecg.common.api.dto.DataLogDTO;
-import org.jeecg.common.api.dto.OnlineAuthDTO;
 import org.jeecg.common.api.dto.PushMessageDTO;
 import org.jeecg.common.api.dto.message.*;
 import org.jeecg.common.api.vo.Result;
@@ -458,16 +457,6 @@ public class SystemApiController {
     }
 
     //-----
-
-    /**
-     * 判断是否有online访问的权限
-     * @param onlineAuthDTO
-     * @return
-     */
-    @PostMapping("/hasOnlineAuth")
-    public boolean hasOnlineAuth(@RequestBody OnlineAuthDTO onlineAuthDTO){
-        return sysBaseApi.hasOnlineAuth(onlineAuthDTO);
-    }
 
     /**
      * 查询用户角色信息

@@ -6,7 +6,6 @@ import org.jeecg.common.exception.JeecgSqlInjectionException;
 import org.jeecg.common.util.oConvertUtils;
 import org.jeecg.config.JeecgBaseConfig;
 import org.jeecg.config.firewall.SqlInjection.IDictTableWhiteListHandler;
-import org.jeecg.config.firewall.interceptor.LowCodeModeInterceptor;
 import org.jeecg.modules.system.entity.SysTableWhiteList;
 import org.jeecg.modules.system.security.DictQueryBlackListHandler;
 import org.jeecg.modules.system.service.ISysTableWhiteListService;
@@ -37,6 +36,10 @@ public class DictTableWhiteListHandlerImpl implements IDictTableWhiteListHandler
      * LowCode 是否为 dev 模式
      */
     private static Boolean LOW_CODE_IS_DEV = null;
+    /**
+     * lowCodeMode 为 dev 的标识值
+     */
+    private static final String LOW_CODE_MODE_DEV = "dev";
 
 
     @Autowired
@@ -230,7 +233,7 @@ public class DictTableWhiteListHandlerImpl implements IDictTableWhiteListHandler
         if (DictTableWhiteListHandlerImpl.LOW_CODE_IS_DEV == null) {
             if (this.jeecgBaseConfig.getFirewall() != null) {
                 String lowCodeMode = this.jeecgBaseConfig.getFirewall().getLowCodeMode();
-                DictTableWhiteListHandlerImpl.LOW_CODE_IS_DEV = LowCodeModeInterceptor.LOW_CODE_MODE_DEV.equals(lowCodeMode);
+                DictTableWhiteListHandlerImpl.LOW_CODE_IS_DEV = DictTableWhiteListHandlerImpl.LOW_CODE_MODE_DEV.equals(lowCodeMode);
             } else {
                 // 如果没有 firewall 配置，则默认为 false
                 DictTableWhiteListHandlerImpl.LOW_CODE_IS_DEV = false;

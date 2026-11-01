@@ -63,7 +63,7 @@ spring:
     locations: classpath:flyway/sql/mysql
     clean-disabled: true
 minidao:
-  base-package: org.jeecg.modules.jmreport.*,org.jeecg.modules.drag.*,org.jeecg.modules.chat2bi.*
+  base-package: org.jeecg.modules.*.mapper
 jeecg:
   firewall:
     dataSourceSafe: false
@@ -78,7 +78,7 @@ jeecg:
     upload: /opt/upFiles
     webapp: /opt/webapp
   shiro:
-    excludeUrls: /test/jeecgDemo/demo3,/test/jeecgDemo/redisDemo/**,/category/**,/visual/**,/map/**,/jmreport/bigscreen2/**
+    excludeUrls: /test/jeecgDemo/demo3,/test/jeecgDemo/redisDemo/**,/category/**,/visual/**,/map/**
   oss:
     endpoint: oss-cn-beijing.aliyuncs.com
     accessKey: ??
@@ -91,11 +91,6 @@ jeecg:
     minio_name: ??
     minio_pass: ??
     bucketName: otatest
-  jmreport:
-    saasMode:
-    firewall:
-      dataSourceSafe: false
-      lowCodeMode: dev
   wps:
     domain: https://wwo.wps.cn/office/
     appid: ??

@@ -17,7 +17,6 @@ import { RouteRecordRaw } from 'vue-router';
 import { PAGE_NOT_FOUND_ROUTE } from '/@/router/routes/basic';
 import { isArray } from '/@/utils/is';
 import { useGlobSetting } from '/@/hooks/setting';
-import { JDragConfigEnum } from '/@/enums/jeecgEnum';
 import { getCasServiceUrl, useSso } from '/@/hooks/web/useSso';
 import { isOAuth2AppEnv } from "/@/views/sys/login/useLogin";
 import { getUrlParam } from "@/utils";
@@ -225,8 +224,6 @@ export const useUserStore = defineStore('app-user', {
         // }
         
         await this.setLoginInfo({ ...data, isLogin: true });
-        // 代码逻辑说明: 登录成功后缓存拖拽模块的接口前缀
-        localStorage.setItem(JDragConfigEnum.DRAG_BASE_URL, useGlobSetting().domainUrl);
 
         // 代码逻辑说明: 修复登录成功后，没有正确重定向的问题
         let redirect = router.currentRoute.value?.query?.redirect as string;
@@ -332,8 +329,6 @@ export const useUserStore = defineStore('app-user', {
       setTimeout(() => {
         this.setAllDictItems(null);
       }, 1e3);
-      // 代码逻辑说明: 退出登录后清除拖拽模块的接口前缀
-      localStorage.removeItem(JDragConfigEnum.DRAG_BASE_URL);
 
       //如果开启单点登录,则跳转到单点统一登录中心
       const openSso = useGlobSetting().openSso;

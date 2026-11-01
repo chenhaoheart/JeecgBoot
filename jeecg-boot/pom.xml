@@ -293,11 +293,6 @@
 					</exclusion>
 				</exclusions>
 			</dependency>
-            <dependency>
-                <groupId>org.jeecgframework.boot3</groupId>
-				<artifactId>jeecg-online</artifactId>
-				<version>3.9.5-beta</version>
-            </dependency>
 			<!--mongon db-->
 			<dependency>
 				<groupId>org.jeecgframework.boot3</groupId>

@@ -7,7 +7,6 @@ enum Api {
   edit = '/sys/dataSource/edit',
   get = '/sys/dataSource/queryById',
   delete = '/sys/dataSource/delete',
-  testConnection = '/online/cgreport/api/testConnection',
   deleteBatch = '/sys/dataSource/deleteBatch',
   exportXlsUrl = 'sys/dataSource/exportXls',
   importExcelUrl = 'sys/dataSource/importExcel',
@@ -54,14 +53,6 @@ export const deleteDataSource = (params, handleSuccess) => {
   return defHttp.delete({ url: Api.delete, data: params }, { joinParamsToUrl: true }).then(() => {
     handleSuccess();
   });
-};
-
-/**
- * 测试连接
- * @param params
- */
-export const testConnection = (params) => {
-  return defHttp.post({ url: Api.testConnection, params });
 };
 
 /**

@@ -7,8 +7,10 @@ import org.apache.shiro.SecurityUtils;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.system.vo.LoginUser;
 import org.jeecg.common.util.RedisUtil;
-import org.jeecg.config.AiChatConfig;
 import org.jeecg.config.JeecgBaseConfig;
+import org.jeecg.modules.airag.llm.consts.LLMConsts;
+import org.jeecg.modules.airag.llm.entity.AiragModel;
+import org.jeecg.modules.airag.llm.service.impl.AiragDefaultModelService;
 import org.jeecg.modules.airag.voice.util.VoiceApiHelper;
 import org.jeecg.modules.airag.voice.service.IVoiceService;
 import org.jeecg.modules.airag.voice.vo.VoiceGenerateVo;
@@ -38,7 +40,7 @@ public class VoiceServiceImpl implements IVoiceService {
     private static final long VOICE_TASK_TTL = 3600L;
 
     @Autowired
-    private AiChatConfig aiChatConfig;
+    private AiragDefaultModelService airagDefaultModelService;
 
     @Autowired
     private JeecgBaseConfig jeecgBaseConfig;
@@ -64,11 +66,16 @@ public class VoiceServiceImpl implements IVoiceService {
      * 核心 TTS 逻辑，接受显式传入的 loginUser（兼容同步调用和异步线程）
      */
     private VoiceResultVo textToSpeechWithUser(VoiceGenerateVo vo, LoginUser loginUser) {
-        AiChatConfig.VoiceModelConfig config = aiChatConfig.getAiModelVoice();
+        // 从数据库默认语音模型读取声色/语速等扩展参数
+        AiragModel voiceModel = airagDefaultModelService.getRequiredDefaultByType(LLMConsts.MODEL_TYPE_VOICE, "语音");
+        JSONObject voiceParams = AiragDefaultModelService.extractParams(voiceModel);
 
-        // 合并参数：前端传值优先，未传则取yml默认值
-        String voice = vo.getVoice() != null ? vo.getVoice() : config.getVoice();
-        double speed = vo.getSpeed() != null ? vo.getSpeed() : config.getSpeed();
+        // 合并参数：前端传值优先，未传则取数据库默认值
+        String voice = vo.getVoice() != null ? vo.getVoice() : voiceParams.getString("voice");
+        double speed = vo.getSpeed() != null ? vo.getSpeed() : voiceParams.getDoubleValue("speed");
+        if (speed <= 0) {
+            speed = 1.0;
+        }
 
         try {
             // 准备输出目录

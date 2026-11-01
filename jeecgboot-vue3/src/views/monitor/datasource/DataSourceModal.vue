@@ -2,15 +2,8 @@
   <BasicModal v-bind="$attrs" @register="registerModal" :title="title" @ok="handleSubmit" width="40%">
     <BasicForm @register="registerForm">
       <template #pwd="{ model, field }">
-        <a-row :gutter="8">
-          <a-col :sm="15" :md="16" :lg="17" :xl="19">
-            <a-input-password v-model:value="model[field]" placeholder="请输入密码" autocomplete="new-password" />
-          </a-col>
-          <a-col :sm="9" :md="7" :lg="7" :xl="5">
-            <a-button type="primary" style="width: 100%" @click="handleTest">测试</a-button>
-          </a-col>
-        </a-row>
-        <div v-if="isUpdate" style="color: #ff4d4f; line-height: 1.5; margin-top: 2px">密码留空表示不修改，测试和保存均沿用原密码</div>
+        <a-input-password v-model:value="model[field]" placeholder="请输入密码" autocomplete="new-password" />
+        <div v-if="isUpdate" style="color: #ff4d4f; line-height: 1.5; margin-top: 2px">密码留空表示不修改，保存时沿用原密码</div>
       </template>
     </BasicForm>
   </BasicModal>
@@ -20,15 +13,13 @@
   import { BasicModal, useModalInner } from '/@/components/Modal';
   import { BasicForm, useForm } from '/@/components/Form/index';
   import { formSchema } from './datasource.data';
-  import { saveOrUpdateDataSource, getDataSourceById, testConnection } from './datasource.api';
-  import { useMessage } from '/@/hooks/web/useMessage';
+  import { saveOrUpdateDataSource, getDataSourceById } from './datasource.api';
 
-  const { createMessage } = useMessage();
   // Emits声明
   const emit = defineEmits(['register', 'success']);
   const isUpdate = ref(true);
   //表单配置
-  const [registerForm, { getFieldsValue, resetFields, validateFields, setFieldsValue, validate }] = useForm({
+  const [registerForm, { resetFields, setFieldsValue, validate }] = useForm({
     // labelWidth: 150,
     schemas: formSchema,
     showActionButtonGroup: false,
@@ -42,7 +33,7 @@
     if (unref(isUpdate)) {
       //获取详情
       data.record = await getDataSourceById({ id: data.record.id });
-      //【安全加固】编辑时不回填密码，留空表示不修改；测试和保存均由后端按id/code沿用原密码
+      //【安全加固】编辑时不回填密码，留空表示不修改；保存由后端按id/code沿用原密码
       await setFieldsValue({
         ...data.record,
         dbPassword: '',
@@ -51,23 +42,6 @@
   });
   //设置标题
   const title = computed(() => (!unref(isUpdate) ? '新增数据源' : '编辑数据源'));
-
-  async function handleTest() {
-    let keys = ['dbType', 'dbDriver', 'dbUrl', 'dbUsername'];
-    await validateFields(keys).then(() => {
-      //【安全加固】取全部字段（含id、code），密码留空时由后端按id/code沿用原密码进行测试
-      let values = getFieldsValue();
-      let loading = createMessage.loading('连接中....', 0);
-      testConnection(values)
-        .then((data) => {
-          if (data.success) {
-            createMessage.success('连接成功');
-          }
-        })
-        .catch((error) => {})
-        .finally(() => loading());
-    });
-  }
 
   //表单提交事件
   async function handleSubmit(v) {

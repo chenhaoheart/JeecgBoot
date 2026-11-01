@@ -4,7 +4,6 @@ import com.alibaba.fastjson.JSONObject;
 import org.jeecg.common.api.CommonAPI;
 import org.jeecg.common.api.dto.AiragFlowDTO;
 import org.jeecg.common.api.dto.DataLogDTO;
-import org.jeecg.common.api.dto.OnlineAuthDTO;
 import org.jeecg.common.api.dto.PushMessageDTO;
 import org.jeecg.common.api.dto.message.*;
 import org.jeecg.common.constant.ServiceNameConstants;
@@ -350,14 +349,6 @@ public interface ISysBaseAPI extends CommonAPI {
      */
     @GetMapping("/sys/api/getUserPermissionSet")
     Set<String> getUserPermissionSet(@RequestParam("userId") String userId);
-
-    /**
-     * 32判断是否有online访问的权限
-     * @param onlineAuthDTO
-     * @return
-     */
-    @PostMapping("/sys/api/hasOnlineAuth")
-    boolean hasOnlineAuth(@RequestBody OnlineAuthDTO onlineAuthDTO);
 
     /**
      * 33通过部门id获取部门全部信息

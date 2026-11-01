@@ -12,15 +12,6 @@ export enum JInputTypeEnum {
   JINPUT_QUERY_LE = 'le',
 }
 
-/**
- * 面板设计器需要的常量定义
- */
-export enum JDragConfigEnum {
-  //baseURL
-  DRAG_BASE_URL = 'drag-base-url',
-  //拖拽缓存前缀
-  DRAG_CACHE_PREFIX = 'drag-cache:',
-}
 // electron 枚举
 export enum ElectronEnum {
   ELECTRON_API = '_ELECTRON_PRELOAD_UTILS_',

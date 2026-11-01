@@ -5,7 +5,6 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jeecg.common.api.dto.AiragFlowDTO;
 import org.jeecg.common.api.dto.DataLogDTO;
-import org.jeecg.common.api.dto.OnlineAuthDTO;
 import org.jeecg.common.api.dto.PushMessageDTO;
 import org.jeecg.common.api.dto.message.*;
 import org.jeecg.common.constant.enums.DySmsEnum;
@@ -221,11 +220,6 @@ public class SysBaseAPIFallback implements ISysBaseAPI {
     @Override
     public Set<String> getUserPermissionSet(String userId) {
         return null;
-    }
-
-    @Override
-    public boolean hasOnlineAuth(OnlineAuthDTO onlineAuthDTO) {
-        return false;
     }
 
     @Override

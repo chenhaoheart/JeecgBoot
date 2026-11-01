@@ -17,14 +17,6 @@ const installOptions = {
 export function registerPackages(app: App) {
   // 仅保存 app 实例，不立即加载模块
   appInstance = app;
-  // app.component(
-  //   'SuperQuery',
-  //   createAsyncComponent(() => import('@jeecg/online').then(mod => mod.SuperQuery))
-  // );
-  // app.component(
-  //   'JOnlineSearchSelect',
-  //   createAsyncComponent(() => import('@jeecg/online').then(mod => mod.JOnlineSearchSelect))
-  // );
 }
 
 /** 已加载的包缓存 */
@@ -62,7 +54,7 @@ async function ensurePackageLoaded(pkgConfig: typeof lazyPackages[number]) {
 function getMatchedPackage(component: string): typeof lazyPackages[number] | null {
   const lc = component.toLowerCase();
   for (const pkgConfig of lazyPackages) {
-    // 从包名中提取关键字，如 @jeecg/online -> online, @jeecg/aiflow -> aiflow
+    // 从包名中提取关键字，如 @jeecg/aiflow -> aiflow
     const keyword = pkgConfig.name.split('/').pop()!;
     if (lc.includes(keyword)) {
       return pkgConfig;

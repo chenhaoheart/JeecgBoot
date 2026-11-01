@@ -8,7 +8,6 @@ import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.jeecg.common.api.CommonAPI;
 import org.jeecg.common.aspect.annotation.PermissionData;
-import org.jeecg.common.constant.CommonConstant;
 import org.jeecg.common.constant.SymbolConstant;
 import org.jeecg.common.system.query.QueryRuleEnum;
 import org.jeecg.common.system.util.JeecgDataAutorUtils;
@@ -57,14 +56,6 @@ public class PermissionDataAspect {
         String requestMethod = request.getMethod();
         String requestPath = request.getRequestURI().substring(request.getContextPath().length());
         requestPath = filterUrl(requestPath);
-        //先判断是否online报表请求
-        if(requestPath.indexOf(UrlMatchEnum.CGREPORT_DATA.getMatchUrl())>=0 || requestPath.indexOf(UrlMatchEnum.CGREPORT_ONLY_DATA.getMatchUrl())>=0){
-            // 获取地址栏参数
-            String urlParamString = request.getParameter(CommonConstant.ONL_REP_URL_PARAM_STR);
-            if(oConvertUtils.isNotEmpty(urlParamString)){
-                requestPath+="?"+urlParamString;
-            }
-        }
         log.debug("拦截请求 >> {} ; 请求类型 >> {} . ", requestPath, requestMethod);
         String username = JwtUtil.getUserNameByToken(request);
         //查询数据权限信息

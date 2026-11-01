@@ -303,6 +303,7 @@ public class AiragChatServiceImpl implements IAiragChatService {
         String key = getConversationDirCacheKey(null);
         key = key + ":*";
         List<String> keys = redisUtil.scan(key);
+        log.info("[AI-CONV] getConversations appId={}, scanPattern={}, scanKeys={}", appId, key, keys);
         // 如果键集合为空，返回空列表
         if (keys.isEmpty()) {
             return Result.ok(Collections.emptyList());
@@ -311,10 +312,17 @@ public class AiragChatServiceImpl implements IAiragChatService {
         // 遍历键集合，获取对应的 ChatConversation 对象
         List<ChatConversation> conversations = new ArrayList<>();
         for (Object k : keys) {
-            ChatConversation conversation = (ChatConversation) redisTemplate.boundValueOps(k).get();
+            ChatConversation conversation = null;
+            try {
+                conversation = (ChatConversation) redisTemplate.boundValueOps(k).get();
+            } catch (Exception e) {
+                log.warn("[AI-CONV] 反序列化会话失败 key={}, err={}", k, e.getMessage());
+                continue;
+            }
 
             if (conversation != null) {
                 AiragApp app = conversation.getApp();
+                log.info("[AI-CONV] key={}, app={}, appIdInConv={}", k, app == null ? "null" : "object", app == null ? "-" : app.getId());
                 if (null == app) {
                     continue;
                 }
@@ -324,6 +332,8 @@ public class AiragChatServiceImpl implements IAiragChatService {
                     conversation.setMessages(null);
                     conversations.add(conversation);
                 }
+            } else {
+                log.warn("[AI-CONV] 会话读取为空 key={}", k);
             }
         }
 
@@ -2274,8 +2284,11 @@ public class AiragChatServiceImpl implements IAiragChatService {
             if (TokenUtils.verifyToken(token, sysBaseApi, redisUtil)) {
                 return JwtUtil.getUsername(token);
             }
+            log.warn("[AI-USERNAME] verifyToken返回false, token前12位={}, uri={}",
+                    token == null ? "null" : token.substring(0, Math.min(12, token.length())),
+                    SpringContextUtils.getHttpServletRequest() == null ? "-" : SpringContextUtils.getHttpServletRequest().getRequestURI());
         } catch (Exception e) {
-            return null;
+            log.warn("[AI-USERNAME] 校验token异常: {}", e.getMessage());
         }
         return null;
     }

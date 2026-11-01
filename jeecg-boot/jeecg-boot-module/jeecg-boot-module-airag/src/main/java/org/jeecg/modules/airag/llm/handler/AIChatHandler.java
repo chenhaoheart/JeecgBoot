@@ -21,7 +21,7 @@ import org.jeecg.common.util.AssertUtils;
 import org.jeecg.common.util.FileDownloadUtils;
 import org.jeecg.common.util.filter.SsrfFileTypeFilter;
 import org.jeecg.common.util.oConvertUtils;
-import org.jeecg.config.AiChatConfig;
+import org.jeecg.modules.airag.llm.service.impl.AiragDefaultModelService;
 import org.jeecg.modules.airag.common.consts.AiragConsts;
 import org.jeecg.modules.airag.common.handler.AIChatParams;
 import org.jeecg.modules.airag.common.handler.IAIChatHandler;
@@ -89,8 +89,8 @@ public class AIChatHandler implements IAIChatHandler {
     private String uploadpath;
 
     @Autowired
-    private AiChatConfig aiChatConfig;
-    
+    private AiragDefaultModelService airagDefaultModelService;
+
     /**
      * 问答
      *
@@ -486,9 +486,12 @@ public class AIChatHandler implements IAIChatHandler {
         //deepseek-reasoner 推理模型不支持插件tool
         String modelName = airagModel.getModelName();
         //update-begin---author:wangshuai ---date:2026-06-29  for：【issues/9727】不支持Tool Calling的模型（如Ollama的deepseek-r1系列）发送工具调用时报错-----------
-        // modelName为空时从系统默认配置获取
-        if(oConvertUtils.isEmpty(modelName) && oConvertUtils.isNotEmpty(aiChatConfig.getModel())){
-            modelName = aiChatConfig.getModel();
+        // modelName为空时从数据库默认LLM模型获取
+        if(oConvertUtils.isEmpty(modelName)){
+            AiragModel defaultLlm = airagDefaultModelService.getDefaultByType(LLMConsts.MODEL_TYPE_LLM);
+            if (defaultLlm != null && oConvertUtils.isNotEmpty(defaultLlm.getModelName())) {
+                modelName = defaultLlm.getModelName();
+            }
         }
         //update-begin---author:claude ---date:2026-08-07  for：Kimi k3 等模型采样参数需固定，覆盖用户配置避免 400 报错 "invalid temperature: only 1 is allowed for this model"-----------
         if (LLMConsts.isFixedSamplingParamModel(modelName)) {
@@ -971,11 +974,8 @@ public class AIChatHandler implements IAIChatHandler {
             if (airagModel != null && oConvertUtils.isNotEmpty(airagModel.getId())) {
                 log.warn("模型未激活,采用默认文生图模型");
             }
-            //判断是否配置了默认模型
-            if(aiChatConfig == null || oConvertUtils.isEmpty(aiChatConfig.getAiModelDraw().getApiKey())){
-                throw new JeecgBootBizTipException("当前系统未配置默认图像模型，请前往yml中配置默认模型");
-            }
-            airagModel = this.getDefaultDrawModel(aiChatConfig.getAiModelDraw());
+            //使用数据库中配置的默认图像模型
+            airagModel = airagDefaultModelService.getRequiredDefaultByType(LLMConsts.MODEL_TYPE_IMAGE, "图像");
         }
         params = mergeParams(airagModel, params);
         try {
@@ -1012,11 +1012,8 @@ public class AIChatHandler implements IAIChatHandler {
             if (airagModel != null && oConvertUtils.isNotEmpty(airagModel.getId())) {
                 log.warn("模型未激活,采用默认图生图模型");
             }
-            //判断是否配置了默认模型
-            if(aiChatConfig == null || oConvertUtils.isEmpty(aiChatConfig.getAiModelPicDraw().getApiKey())){
-                throw new JeecgBootBizTipException("当前系统未配置默认图像模型，请前往yml中配置默认模型");
-            }
-            airagModel = this.getDefaultDrawModel(aiChatConfig.getAiModelPicDraw());
+            //使用数据库中配置的默认图像模型
+            airagModel = airagDefaultModelService.getRequiredDefaultByType(LLMConsts.MODEL_TYPE_IMAGE, "图像");
         }
         params = mergeParams(airagModel, params);
         List<String> originalImageBase64List = getFirstImageBase64(images);
@@ -1111,21 +1108,5 @@ public class AIChatHandler implements IAIChatHandler {
 
         log.error("AI模型调用异常: {}", errMsg, e);
         return new JeecgBootException(errMsg);
-    }
-
-    /**
-     * 获取默认图像模型
-     *
-     * @return
-     */
-    private AiragModel getDefaultDrawModel(AiChatConfig.ModelConfig aiModelDraw) {
-        AiragModel airagModel = new AiragModel();
-        airagModel.setModelName(aiModelDraw.getModel());
-        airagModel.setBaseUrl(aiModelDraw.getApiHost());
-        airagModel.setProvider(aiModelDraw.getProvider());
-        JSONObject credentialObject = new JSONObject();
-        credentialObject.put("apiKey",aiModelDraw.getApiKey());
-        airagModel.setCredential(credentialObject.toJSONString());
-        return airagModel;
     }
 }

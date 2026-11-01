@@ -7,7 +7,7 @@ import { warn } from '/@/utils/log';
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { getTenantId, getToken } from "/@/utils/auth";
 import { URL_HASH_TAB, _eval } from '/@/utils';
-//引入online lib路由
+//引入懒加载包（如 @jeecg/aiflow）路由
 import { packageViews } from '/@/utils/monorepo/dynamicRouter';
 import { loadPackageComponent } from '/@/utils/monorepo/registerPackages';
 import { dynamicPages } from '/@/utils/dynamicPages';
@@ -32,7 +32,7 @@ function asyncImportRoute(routes: AppRouteRecordRaw[] | undefined) {
     // update-begin--author:liaozhiyang---date:20260302---for:【QQYUN-14799】动态引入页面会生成两份及引入components下的组件文件
     dynamicViewsModules = dynamicPages as Record<string, () => Promise<Recordable>>;
     // update-end--author:liaozhiyang---date:20260302---for:【QQYUN-14799】动态引入页面会生成两份及引入components下的组件文件
-    //合并online lib路由
+    //合并懒加载包路由
     dynamicViewsModules = Object.assign({}, dynamicViewsModules, packageViews);
   }
   if (!routes) return;
@@ -127,7 +127,7 @@ function dynamicImport(dynamicViewsModules: Record<string, () => Promise<Recorda
     );
     return;
   }
-  // online/aiflow 本地未找到，尝试从懒加载包中按需加载
+  // aiflow 本地未找到，尝试从懒加载包中按需加载
   if (component.startsWith('/super/airag/aiflow/')) {
     return () => {
       return loadPackageComponent(component).then((factory) => (factory ? factory() : Promise.reject(`组件 ${component} 未找到`)));

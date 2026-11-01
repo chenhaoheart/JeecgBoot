@@ -69,13 +69,11 @@ function preventClosingPopUp(this: any, params) {
     if (className.includes('j-input-pop')) {
       return false;
     }
-    // 点击的标签是JPopup的弹出层、部门选择、用户选择
+    // 点击的标签是弹窗层、部门选择、用户选择
     if (
       className.includes('j-popup-modal') ||
       className.includes('j-depart-select-modal') ||
       className.includes('j-user-select-modal') ||
-      className.includes('jeecg-online-pop-list-modal') ||
-      className.includes('jeecg-online-pop-modal') ||
       className.includes('jeecg-all-table-pop-list-modal')
     ) {
       return false;

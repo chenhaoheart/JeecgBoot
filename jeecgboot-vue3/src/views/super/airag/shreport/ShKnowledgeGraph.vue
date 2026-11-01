@@ -310,12 +310,12 @@
           links,
           label: {
             show: true,
-            position: 'right',
-            color: '#344054',
+            position: 'inside',
+            color: '#fff',
             fontSize: 12,
             formatter: (p: any) => {
               const s = String(p.data?.name || '');
-              return s.length > 12 ? s.slice(0, 12) + '…' : s;
+              return s.length > 6 ? s.slice(0, 6) + '…' : s;
             },
           },
           edgeLabel: {

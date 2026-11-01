@@ -8,13 +8,6 @@ export async function registerJVxeCustom() {
   //  否则将会导致 i18n 失效！
   // ----------------- ⚠ 注意事项 ⚠ -----------------
 
-  // 注册【Popup】（普通封装方式）
-  await registerAsyncComponent(JVxeTypes.popup, import('./src/components/JVxePopupCell.vue'));
-  // update-begin--author:liaozhiyang---date:20260507---for：【issues/7617】vxetable子表支持popup字典
-  // 注册【Popup字典】
-  await registerAsyncComponent(JVxeTypes.popupDict, import('./src/components/JVxePopupDictCell.vue'));
-  // update-end--author:liaozhiyang---date:20260507---for：【issues/7617】vxetable子表支持popup字典
-
   // 注册【字典搜索下拉】组件（高级封装方式）
   registerComponent(JVxeTypes.selectDictSearch, DictSearchInputCell, DictSearchSpanCell);
 

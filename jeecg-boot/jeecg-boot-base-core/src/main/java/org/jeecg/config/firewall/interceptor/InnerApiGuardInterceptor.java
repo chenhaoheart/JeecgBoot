@@ -15,7 +15,7 @@ import java.util.Set;
 /**
  * 单体模式下禁止外部调用微服务内部接口
  * <p>
- * /sys/api、/airag/api、/online/api、/drag/api 等是提供给其它微服务 Feign 调用的内部接口，
+ * /sys/api、/airag/api 等是提供给其它微服务 Feign 调用的内部接口，
  * 单体模式下各模块为进程内调用，不需要对外暴露。其中部分接口位于依赖 jar 中无法直接修改，
  * 因此按 Spring 实际匹配到的接口路径模板统一拦截（不受 URL 编码、大小写、重复斜杠等写法影响）。
  *
@@ -28,12 +28,7 @@ public class InnerApiGuardInterceptor implements HandlerInterceptor {
     /**
      * 微服务内部接口路径前缀
      */
-    private static final String[] INNER_API_PREFIXES = {"/sys/api/", "/airag/api/", "/online/api/", "/drag/api/"};
-
-    /**
-     * 前端在用、需要放行的接口（Online 报表字典翻译）
-     */
-    private static final Set<String> ALLOW_PATTERNS = Set.of("/online/api/cgreportGetDataPackage");
+    private static final String[] INNER_API_PREFIXES = {"/sys/api/", "/airag/api/"};
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws IOException {
@@ -45,7 +40,7 @@ public class InnerApiGuardInterceptor implements HandlerInterceptor {
             return true;
         }
         String matched = pattern.toString();
-        if (isInnerApi(matched) && !ALLOW_PATTERNS.contains(matched)) {
+        if (isInnerApi(matched)) {
             log.warn("单体模式禁止外部调用内部接口: {}", request.getRequestURI());
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
             response.setCharacterEncoding("UTF-8");
